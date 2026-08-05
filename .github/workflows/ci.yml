@@ -137,7 +137,7 @@ jobs:
           ./platform/macos/build/RightClickSymlink.app/Contents/Resources/rcsym probe
           ./scripts/smoke.sh platform/macos/build/RightClickSymlink.app/Contents/Resources/rcsym
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: RightClickSymlink-app
           path: platform/macos/build/RightClickSymlink.app

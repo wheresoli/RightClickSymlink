@@ -95,7 +95,7 @@ jobs:
           # extended attributes, which a plain zip silently flattens.
           ditto -c -k --sequesterRsrc --keepParent "$out" dist/RightClickSymlink-macos-universal.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: |
