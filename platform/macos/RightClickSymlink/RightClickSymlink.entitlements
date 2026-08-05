@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    The containing app is deliberately NOT sandboxed.
+
+    It is distributed with Developer ID rather than through the App Store, so
+    sandboxing is optional here, and turning it on would be actively harmful:
+    a sandboxed parent's powerbox grant for a user-selected path does not extend
+    to a child process, so `rcsym` would be denied the write that the user just
+    authorised in the save panel.
+
+    The extension it contains IS sandboxed, which is what macOS requires.
+
+    The entitlement below is only needed if you enable the hardened runtime
+    (required for notarization). Without it, the hardened runtime blocks
+    executing the bundled rcsym helper.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

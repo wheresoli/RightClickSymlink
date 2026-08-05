@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparse MSIX package: the only way onto the Windows 11 *short* context menu.
+
+  A "sparse" package carries just this manifest and the assets; the actual
+  executables stay where they are on disk, pointed at by ExternalLocation.
+  That keeps the normal `cargo build` output as the source of truth.
+
+  READ platform/windows/msix/README.md BEFORE TOUCHING THIS FILE.
+  It is not usable as-is: the CLSID below has no COM server behind it yet.
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+    xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+    xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap uap10 desktop5 com rescap">
+
+  <!--
+    Publisher MUST match the subject of the certificate used to sign the
+    package, character for character, or deployment fails with 0x800B0100.
+    For local testing that means a self-signed cert whose subject is exactly
+    this string. See README.md step 2.
+  -->
+  <Identity
+      Name="RightClickSymlink"
+      Publisher="CN=RightClickSymlink Development"
+      Version="0.1.0.0"
+      ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Right Click Symlink</DisplayName>
+    <PublisherDisplayName>Right Click Symlink</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+    <!-- Marks this as a sparse package: the payload lives outside the .msix. -->
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+
+  <Dependencies>
+    <!--
+      22000 is the Windows 11 RTM build. The modern context menu does not exist
+      before it, so there is nothing to target on Windows 10. Use the legacy
+      registry verbs from register.ps1 there instead.
+    -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+
+  <Applications>
+    <Application
+        Id="RightClickSymlink"
+        Executable="rcsymw.exe"
+        EntryPoint="Windows.FullTrustApplication">
+
+      <uap:VisualElements
+          DisplayName="Right Click Symlink"
+          Description="Create real symlinks from the right-click menu"
+          BackgroundColor="transparent"
+          Square150x150Logo="Images\Square150x150Logo.png"
+          Square44x44Logo="Images\Square44x44Logo.png"
+          AppListEntry="none" />
+
+      <Extensions>
+        <!--
+          The in-process COM server implementing IExplorerCommand.
+
+          THE DLL BELOW DOES NOT EXIST YET. This is the one genuinely unwritten
+          piece of the project; see README.md "What is still missing".
+        -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="Right Click Symlink context menu">
+              <com:Class
+                  Id="9F4C2A18-6E3B-4D57-9C21-1B7A0E5D8F30"
+                  Path="RcsymContextMenu.dll"
+                  ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+
+        <!--
+          Where the verbs appear. Note that these are the same three surfaces
+          register.ps1 writes to, expressed declaratively:
+
+            Type="*"                     every file
+            Type="Directory"             a folder that was clicked
+            Type="Directory\Background"  empty space inside a folder
+
+          Unlike the registry route there is no %1-versus-%V trap here: the
+          handler receives an IShellItemArray and asks it what was selected.
+        -->
+        <desktop5:Extension Category="windows.fileExplorerContextMenus">
+          <desktop5:FileExplorerContextMenus>
+            <desktop5:ItemType Type="*">
+              <desktop5:Verb Id="SymlinkTo" Clsid="9F4C2A18-6E3B-4D57-9C21-1B7A0E5D8F30" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory">
+              <desktop5:Verb Id="SymlinkTo" Clsid="9F4C2A18-6E3B-4D57-9C21-1B7A0E5D8F30" />
+            </desktop5:ItemType>
+            <desktop5:ItemType Type="Directory\Background">
+              <desktop5:Verb Id="SymlinkFrom" Clsid="9F4C2A18-6E3B-4D57-9C21-1B7A0E5D8F30" />
+            </desktop5:ItemType>
+          </desktop5:FileExplorerContextMenus>
+        </desktop5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

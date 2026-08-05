@@ -1,0 +1,22 @@
+/target
+**/*.rs.bk
+
+# Cargo.lock IS committed. This workspace ships binaries, not a library, so a
+# locked dependency set is what makes a CI run and a user's build reproducible.
+
+# macOS
+.DS_Store
+platform/macos/build/
+platform/macos/DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
+# Windows
+platform/windows/msix/*.msix
+platform/windows/msix/Images/
+*.pfx
+*.cer
+
+# Editor
+.vscode/
+.idea/

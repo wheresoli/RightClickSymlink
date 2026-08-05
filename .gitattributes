@@ -1,0 +1,27 @@
+# Line endings are pinned here rather than left to each clone's core.autocrlf.
+#
+# This project is developed on Windows but its scripts run on Linux and macOS,
+# where a shell script with CRLF fails as:
+#
+#     ./install.sh: /usr/bin/env: bad interpreter: No such file or directory
+#
+# which names neither the real cause nor the file. Normalising in .gitattributes
+# makes the checkout deterministic no matter how a contributor has git set up.
+* text=auto eol=lf
+
+# PowerShell only ever runs on Windows, where CRLF is conventional.
+*.ps1 text eol=crlf
+
+# Explicit, because these are the ones that break loudly.
+*.sh    text eol=lf
+*.py    text eol=lf
+*.swift text eol=lf
+
+*.desktop     text eol=lf
+*.nemo_action text eol=lf
+*.plist       text eol=lf
+*.entitlements text eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary

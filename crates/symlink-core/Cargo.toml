@@ -1,0 +1,12 @@
+[package]
+name = "symlink-core"
+description = "Platform-abstracted creation of real filesystem links"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+tempfile = "3"

@@ -1,0 +1,30 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+# Folders only: this direction creates a link *inside* the folder you picked.
+MimeType=inode/directory;
+Actions=SymlinkFromFolder;SymlinkFromFile;
+X-KDE-Priority=TopLevel
+X-KDE-Submenu=Symlink From
+
+# NOTE ON PLACEMENT
+#
+# Dolphin's support for service menus on the empty-area (background) click has
+# varied across Plasma releases, so this file attaches to folders instead: you
+# right-click the destination folder itself rather than empty space inside it.
+#
+# The semantics are identical -- %f is passed as --dir, so the link is created
+# as a child of that folder and the folder is never touched. Only the gesture
+# differs from the other platforms.
+
+[Desktop Action SymlinkFromFolder]
+Name=Folder…
+Comment=Create a link inside this folder, pointing at another folder
+Icon=emblem-symbolic-link
+Exec=@RCSYM@ from --dir %f --pick folder
+
+[Desktop Action SymlinkFromFile]
+Name=File…
+Comment=Create a link inside this folder, pointing at a file
+Icon=emblem-symbolic-link
+Exec=@RCSYM@ from --dir %f --pick file

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=KonqPopupMenu/Plugin
+# all/all matches files and folders alike.
+MimeType=all/all;
+Actions=SymlinkTo;
+# TopLevel keeps it out of the "Actions" submenu.
+X-KDE-Priority=TopLevel
+
+[Desktop Action SymlinkTo]
+Name=Symlink To…
+Comment=Create a symlink to this somewhere else
+Icon=emblem-symbolic-link
+# %F is the full list of selected paths, so a multi-selection is one invocation
+# rather than one process per file.
+Exec=@RCSYM@ to %F

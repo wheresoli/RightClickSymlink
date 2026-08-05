@@ -1,0 +1,9 @@
+[Nemo Action]
+Name=Symlink To…
+Comment=Create a symlink to this somewhere else
+Exec=@RCSYM@ to %F
+Icon-Name=emblem-symbolic-link
+# notnone: only when something is actually selected.
+Selection=notnone
+Extensions=any;
+Quote=double

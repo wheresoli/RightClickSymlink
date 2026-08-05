@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>RightClickSymlink</string>
+    <key>CFBundleDisplayName</key>
+    <string>Right Click Symlink</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.rightclicksymlink.app</string>
+    <key>CFBundleExecutable</key>
+    <string>RightClickSymlink</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+
+    <!--
+        No Dock icon and no menu bar. The app exists to service requests from
+        the Finder extension; it is not something you sit in front of.
+        Panels are still shown by calling NSApp.activate first.
+    -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!--
+        How the sandboxed extension reaches this app. The extension builds
+        rcsym://to?p=/some/path and hands it to NSWorkspace; launchd starts
+        this app and delivers it to application(_:open:).
+    -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.rightclicksymlink.url</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>rcsym</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

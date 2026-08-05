@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Finder Sync extensions must be sandboxed; macOS will not load one otherwise.
+
+    Nothing else is requested, and nothing else is needed: the extension only
+    reads the selection out of FIFinderSyncController and opens a URL. Every
+    privileged operation happens in the containing app, which is not sandboxed.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+</dict>
+</plist>

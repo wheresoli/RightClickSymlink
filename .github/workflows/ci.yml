@@ -1,0 +1,342 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The core, on all three platforms.
+  #
+  # This is the job that matters most: the project is developed on Windows, so
+  # CI is the only place the Unix code path is ever executed.
+  # ---------------------------------------------------------------------------
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # rfd talks to the XDG desktop portal on Linux, but can fall back to
+      # GTK3 depending on how features resolve. Installing the dev headers is
+      # cheaper than debugging a link error later.
+      - name: Install Linux GUI deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev
+
+      - name: Test
+        run: cargo test --workspace --all-targets
+
+      - name: Doc tests
+        run: cargo test --workspace --doc
+
+      - name: Build release
+        run: cargo build --release
+
+      # What the machine can actually do. Recorded on every run because the
+      # answer differs per runner and explains any skipped assertions below.
+      - name: Capabilities
+        shell: bash
+        run: ./target/release/rcsym probe || ./target/release/rcsym.exe probe
+
+      # Exercises the shipped binary the way a context menu does, including the
+      # refuses-to-overwrite guarantees.
+      - name: Smoke test
+        shell: bash
+        run: ./scripts/smoke.sh
+
+  # ---------------------------------------------------------------------------
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux GUI deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ---------------------------------------------------------------------------
+  # The macOS bundle.
+  #
+  # The Swift was written on a Windows machine and this is where it first meets
+  # a compiler. Failures here are expected to be real.
+  # ---------------------------------------------------------------------------
+  macos-bundle:
+    name: macOS app bundle
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Validate plists and entitlements
+        run: |
+          for f in platform/macos/*/Info.plist platform/macos/*/*.entitlements; do
+            plutil -lint "$f"
+          done
+
+      - name: Build the bundle
+        run: ./platform/macos/build.sh
+
+      - name: Verify bundle layout
+        run: |
+          APP=platform/macos/build/RightClickSymlink.app
+          test -f "$APP/Contents/MacOS/RightClickSymlink"          || { echo "missing host binary"; exit 1; }
+          test -f "$APP/Contents/Resources/rcsym"                  || { echo "missing helper";      exit 1; }
+          test -f "$APP/Contents/PlugIns/FinderSyncExt.appex/Contents/MacOS/FinderSyncExt" \
+            || { echo "missing extension binary"; exit 1; }
+          echo "--- architectures ---"
+          lipo -info "$APP/Contents/MacOS/RightClickSymlink"
+          lipo -info "$APP/Contents/Resources/rcsym"
+          lipo -info "$APP/Contents/PlugIns/FinderSyncExt.appex/Contents/MacOS/FinderSyncExt"
+          echo "--- signature ---"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      # The helper inside the bundle must work, not just exist.
+      - name: Run the bundled helper
+        run: |
+          ./platform/macos/build/RightClickSymlink.app/Contents/Resources/rcsym probe
+          ./scripts/smoke.sh platform/macos/build/RightClickSymlink.app/Contents/Resources/rcsym
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RightClickSymlink-app
+          path: platform/macos/build/RightClickSymlink.app
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # The four Linux file-manager adapters.
+  # ---------------------------------------------------------------------------
+  linux-adapters:
+    name: Linux adapters
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck libgtk-3-dev
+
+      - name: Shellcheck
+        run: shellcheck -S warning scripts/smoke.sh platform/linux/install.sh platform/macos/build.sh
+
+      - name: Nautilus extension parses
+        run: python3 -m py_compile platform/linux/nautilus/rcsym-nautilus.py
+
+      # KDE service menus and Nemo actions are INI. RawConfigParser because the
+      # Exec lines are full of %F / %P tokens that %-interpolation would eat.
+      - name: Desktop-entry files parse
+        run: |
+          python3 - <<'PY'
+          import configparser, glob
+          files = glob.glob("platform/linux/dolphin/*.desktop") + \
+                  glob.glob("platform/linux/nemo/*.nemo_action")
+          assert files, "no adapter files found"
+          for path in files:
+              cp = configparser.RawConfigParser()
+              cp.optionxform = str
+              cp.read(path, encoding="utf-8")
+              section = cp.sections()[0]
+              assert cp.has_option(section, "Name") or "Actions" in cp[section], path
+              print(f"ok  {path}  [{', '.join(cp.sections())}]")
+          PY
+
+      - name: Thunar snippet is valid XML
+        run: python3 -c "import xml.etree.ElementTree as ET; ET.parse('platform/linux/thunar/uca-snippet.xml'); print('ok')"
+
+      - name: Build rcsym
+        run: cargo build --release
+
+      # Run install.sh for real against a throwaway HOME.
+      #
+      # The script gates each adapter on `command -v <file manager>`, so stub
+      # executables stand in for file managers that are not installed on a CI
+      # runner. That exercises the actual install path rather than a mock of it.
+      - name: install.sh installs and uninstalls cleanly
+        run: |
+          set -euo pipefail
+          FAKE="$RUNNER_TEMP/fakehome"
+          STUBS="$RUNNER_TEMP/stubs"
+          mkdir -p "$FAKE" "$STUBS"
+          for fm in nautilus dolphin nemo thunar; do
+            printf '#!/bin/sh\nexit 0\n' > "$STUBS/$fm"
+            chmod +x "$STUBS/$fm"
+          done
+          export PATH="$STUBS:$PATH"
+          export XDG_DATA_HOME="$FAKE/.local/share"
+          export XDG_CONFIG_HOME="$FAKE/.config"
+
+          ./platform/linux/install.sh
+
+          echo "--- installed files ---"
+          find "$FAKE" -type f | sort
+          test -f "$XDG_DATA_HOME/nautilus-python/extensions/rcsym-nautilus.py"
+          test -f "$XDG_DATA_HOME/kio/servicemenus/rcsym-symlink-to.desktop"
+          test -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
+          test -f "$XDG_CONFIG_HOME/Thunar/uca.xml"
+
+          echo "--- @RCSYM@ was substituted everywhere ---"
+          if grep -rl '@RCSYM@' "$FAKE"; then
+            echo "placeholder left behind"; exit 1
+          fi
+
+          echo "--- KDE service menus are executable (Plasma 5.85+ requires it) ---"
+          test -x "$XDG_DATA_HOME/kio/servicemenus/rcsym-symlink-to.desktop"
+
+          echo "--- re-running must be idempotent ---"
+          ./platform/linux/install.sh
+          COUNT=$(grep -c 'rcsym-symlink-to' "$XDG_CONFIG_HOME/Thunar/uca.xml")
+          test "$COUNT" -eq 1 || { echo "thunar action duplicated ($COUNT)"; exit 1; }
+
+          echo "--- uninstall removes everything ---"
+          ./platform/linux/install.sh --uninstall
+          test ! -f "$XDG_DATA_HOME/nautilus-python/extensions/rcsym-nautilus.py"
+          test ! -f "$XDG_DATA_HOME/kio/servicemenus/rcsym-symlink-to.desktop"
+          test ! -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
+          grep -q 'rcsym' "$XDG_CONFIG_HOME/Thunar/uca.xml" && { echo "thunar actions left behind"; exit 1; }
+          echo "clean"
+
+  # ---------------------------------------------------------------------------
+  # The Windows context-menu registration.
+  #
+  # A CI runner is disposable, so unlike a developer machine it is a perfectly
+  # good place to write real registry entries and read them back.
+  # ---------------------------------------------------------------------------
+  windows-shell:
+    name: Windows registry verbs
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
+          # Write-Host is the correct choice for a user-facing installer, and
+          # the entry-point script legitimately has no return value to pipe.
+          $results = Invoke-ScriptAnalyzer -Path platform/windows -Recurse -Severity Warning,Error `
+              -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
+          if ($results) { $results | Format-Table -AutoSize; throw "PSScriptAnalyzer found issues" }
+          Write-Output "clean"
+
+      - name: Build
+        run: cargo build --release
+
+      - name: register.ps1 writes correct verbs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./platform/windows/register.ps1
+
+          $base = 'HKCU:\Software\Classes'
+          $expect = @{
+            "$base\*\shell\RightClickSymlink.To"                                = '%1'
+            "$base\Directory\shell\RightClickSymlink.To"                        = '%1'
+            "$base\Directory\Background\shell\RightClickSymlink.FromFolder"     = '%V'
+            "$base\Directory\Background\shell\RightClickSymlink.FromFile"       = '%V'
+          }
+
+          foreach ($key in $expect.Keys) {
+            if (-not (Test-Path $key)) { throw "missing verb: $key" }
+            $cmd = (Get-ItemProperty "$key\command").'(default)'
+            Write-Output "  $key"
+            Write-Output "      $cmd"
+
+            # The single most common way to get a Background verb wrong is
+            # using %1, which is always empty there. Assert the token.
+            $token = $expect[$key]
+            if ($cmd -notmatch [regex]::Escape($token)) {
+              throw "$key should pass $token but does not"
+            }
+            if ($token -eq '%V' -and $cmd -match '%1') {
+              throw "$key uses %1 on a Background verb"
+            }
+            if (-not (Test-Path (($cmd -split '"')[1]))) {
+              throw "$key points at a missing executable"
+            }
+          }
+
+          # Multi-select must collapse to one invocation, not one per file.
+          $msm = (Get-ItemProperty "$base\Directory\shell\RightClickSymlink.To").MultiSelectModel
+          if ($msm -ne 'Player') { throw "MultiSelectModel is '$msm', expected 'Player'" }
+          Write-Output "all verbs correct"
+
+      - name: unregister.ps1 removes them
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./platform/windows/unregister.ps1
+          $base = 'HKCU:\Software\Classes'
+          foreach ($key in @(
+            "$base\*\shell\RightClickSymlink.To",
+            "$base\Directory\shell\RightClickSymlink.To",
+            "$base\Directory\Background\shell\RightClickSymlink.FromFolder",
+            "$base\Directory\Background\shell\RightClickSymlink.FromFile"
+          )) {
+            if (Test-Path $key) { throw "left behind: $key" }
+          }
+          Write-Output "clean"
+
+      # A console window flashing on every right-click is a real regression, and
+      # it is invisible unless something checks the PE header.
+      - name: rcsymw.exe is a GUI-subsystem binary
+        shell: pwsh
+        run: |
+          $expected = @{ 'rcsym' = 3; 'rcsymw' = 2 }   # 3 = console, 2 = GUI
+          foreach ($name in $expected.Keys) {
+            $bytes = [System.IO.File]::ReadAllBytes("target/release/$name.exe")
+            $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+            $subsystem = [BitConverter]::ToUInt16($bytes, $peOffset + 0x5C)
+            Write-Output "  $name.exe subsystem=$subsystem"
+            if ($subsystem -ne $expected[$name]) {
+              throw "$name.exe subsystem is $subsystem, expected $($expected[$name])"
+            }
+          }

@@ -1,0 +1,24 @@
+[package]
+name = "rcsym"
+description = "Right-click symlink helper: dialogs plus a headless link command"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Two front ends over one `run()`:
+#   rcsym   - console subsystem. Scripting, `probe`, `link`, CI.
+#   rcsymw  - GUI subsystem on Windows, so invoking it from a context menu does
+#             not flash a console window. This is the one the registry points at.
+[[bin]]
+name = "rcsym"
+path = "src/bin/rcsym.rs"
+
+[[bin]]
+name = "rcsymw"
+path = "src/bin/rcsymw.rs"
+
+[dependencies]
+symlink-core = { path = "../symlink-core" }
+clap = { version = "4", features = ["derive"] }
+rfd = "0.15"

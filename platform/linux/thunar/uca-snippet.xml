@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Thunar custom actions for Right Click Symlink.
+
+    Thunar keeps every custom action in a single file, ~/.config/Thunar/uca.xml,
+    so these cannot simply be dropped into a directory the way the other three
+    file managers allow. install.sh merges them in and leaves any actions you
+    already had alone.
+
+    LIMITATION: Thunar custom actions require a selection. There is no
+    equivalent of Nemo's Selection=none, so there is no true background-click
+    entry here. "Symlink From..." therefore attaches to folders: you
+    right-click the destination folder rather than empty space inside it. The
+    result is identical, because %f is passed as the destination directory and
+    the folder itself is never modified. Only the gesture differs.
+
+    To add these by hand instead: Edit > Configure custom actions... in Thunar.
+-->
+<actions>
+  <action>
+    <icon>emblem-symbolic-link</icon>
+    <name>Symlink To…</name>
+    <submenu></submenu>
+    <unique-id>rcsym-symlink-to</unique-id>
+    <command>@RCSYM@ to %F</command>
+    <description>Create a symlink to this somewhere else</description>
+    <range>*</range>
+    <patterns>*</patterns>
+    <startup-notify/>
+    <directories/>
+    <audio-files/>
+    <image-files/>
+    <other-files/>
+    <text-files/>
+    <video-files/>
+  </action>
+
+  <action>
+    <icon>emblem-symbolic-link</icon>
+    <name>Folder…</name>
+    <submenu>Symlink From</submenu>
+    <unique-id>rcsym-symlink-from-folder</unique-id>
+    <command>@RCSYM@ from --dir %f --pick folder</command>
+    <description>Create a link inside this folder, pointing at another folder</description>
+    <range>1</range>
+    <patterns>*</patterns>
+    <startup-notify/>
+    <directories/>
+  </action>
+
+  <action>
+    <icon>emblem-symbolic-link</icon>
+    <name>File…</name>
+    <submenu>Symlink From</submenu>
+    <unique-id>rcsym-symlink-from-file</unique-id>
+    <command>@RCSYM@ from --dir %f --pick file</command>
+    <description>Create a link inside this folder, pointing at a file</description>
+    <range>1</range>
+    <patterns>*</patterns>
+    <startup-notify/>
+    <directories/>
+  </action>
+</actions>
