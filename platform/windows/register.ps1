@@ -54,7 +54,7 @@ $Verbs = @(
     @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFile';   Label = 'Symlink From File...' }
 )
 
-function Remove-Entries {
+function Remove-Registration {
     foreach ($v in $Verbs) {
         $path = "HKCU:\$($v.Key)"
         if (Test-Path $path) {
@@ -65,7 +65,7 @@ function Remove-Entries {
 }
 
 if ($Uninstall) {
-    Remove-Entries
+    Remove-Registration
     Write-Host ""
     Write-Host "Uninstalled. Explorer picks this up immediately; no restart needed."
     return
@@ -106,7 +106,7 @@ if ($Relative) { $flags = "$flags --relative" }
 # ---------------------------------------------------------------------------
 
 # Start clean so re-running never leaves a half-updated command line behind.
-Remove-Entries
+Remove-Registration
 
 foreach ($v in $Verbs) {
     $path = "HKCU:\$($v.Key)"
