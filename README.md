@@ -19,19 +19,40 @@ right answer.
 
 ## Status
 
-| | Link engine | Context menu | Built & tested |
+| | Link engine | Context menu | Verified |
 |---|---|---|---|
-| **Windows 10** | working | working (registry verbs) | yes, on this machine |
-| **Windows 11** | working | working, under "Show more options" | yes |
+| **Windows 10 / 11** | working | working (registry verbs) | CI + by hand |
 | **Windows 11 short menu** | working | scaffold only — needs a COM DLL | no |
-| **macOS** | working | written, never compiled | no |
-| **Linux** (Nautilus / Dolphin / Nemo / Thunar) | working | written, never compiled | no |
+| **macOS** | working | compiles, bundles, signs | CI |
+| **Linux** (Nautilus / Dolphin / Nemo / Thunar) | working | installs and uninstalls cleanly | CI |
 
-The Rust core is tested and verified against a real filesystem. The Swift and
-the four Linux adapters were written on a Windows machine and have never been
-run — expect to fix a line or two. The one genuinely unfinished piece is the
-Windows 11 short-menu handler; see
+On Windows 11 the registry verbs land under "Show more options". Getting into
+the short menu needs a packaged `IExplorerCommand` handler, which is the one
+genuinely unfinished piece — see
 [platform/windows/msix/README.md](platform/windows/msix/README.md).
+
+### What CI actually proves
+
+Every push runs on all three platforms, which matters here because the project
+is developed on Windows and CI is the only place the Unix paths execute at all.
+
+- The core builds and passes on Linux, macOS and Windows, and `scripts/smoke.sh`
+  drives the shipped binary against a real filesystem on each — including the
+  refuses-to-overwrite guarantees.
+- The Swift compiles, the `.app` assembles universal (arm64 + x86_64), and
+  `codesign --verify --deep --strict` passes.
+- `install.sh` runs against a throwaway `HOME` with stub file managers on
+  `PATH`, asserting all four adapters install, that no `@RCSYM@` placeholder
+  survives, that re-running does not duplicate the Thunar action, and that
+  uninstall leaves nothing behind.
+- `register.ps1` writes real registry verbs on the Windows runner and they are
+  read back — including asserting that Background verbs use `%V` and not `%1`,
+  and that `rcsymw.exe` really is a GUI-subsystem binary.
+
+**What it does not prove:** that the menu entries appear in a real Finder or a
+real Nautilus. Both need a logged-in desktop session, and macOS additionally
+requires a human to enable the extension in System Settings. Those two remain
+untested by anyone.
 
 ## Layout
 

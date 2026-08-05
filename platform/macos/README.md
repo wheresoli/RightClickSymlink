@@ -4,9 +4,11 @@ Easiest of the three platforms for the part that matters — `symlink(2)` needs 
 privilege, takes no file-vs-directory flag, and dangling links are legal. The
 work here is all in the packaging.
 
-> **Not built or tested on this machine.** The scaffold was written on Windows,
-> so the Swift has never been through a compiler. Expect to fix a line or two on
-> first build. The Rust core underneath is tested and working.
+> **Compiled in CI, never run in a real Finder.** Every push builds this bundle
+> on a macOS runner: the Swift compiles, the `.app` assembles universal, and
+> `codesign --verify --deep --strict` passes. What CI cannot do is log into a
+> desktop session and enable a Finder extension, so whether the menu items
+> actually appear is still unverified.
 
 ## Why it is worth having
 

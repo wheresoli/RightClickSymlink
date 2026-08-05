@@ -4,8 +4,11 @@ Not stupid — but the most fragmented. There is no such thing as "the Linux
 context menu"; each file manager has its own mechanism, so this is one small
 adapter per file manager over the same binary.
 
-> **Not tested on this machine.** Written on Windows. The Rust core underneath
-> is tested and working; the four adapters are unexercised.
+> **Installed in CI, never run in a real file manager.** Every push runs
+> `install.sh` on an Ubuntu runner against a throwaway `HOME` with stub file
+> managers on `PATH`, checking that all four adapters install, that re-running
+> is idempotent, and that uninstall leaves nothing behind. What CI cannot do is
+> open a real Nautilus and look at the menu.
 
 ## Set expectations first
 
