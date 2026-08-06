@@ -249,6 +249,38 @@ Actions tab with a `version` input. It also takes a `dry_run` flag that builds
 all three platforms and uploads the artifacts without tagging or publishing —
 useful for checking a packaging change before it becomes a real release.
 
+### Dependency updates merge themselves too
+
+Dependabot opens the PR, CI runs on it, and if all seven jobs pass it is
+squash-merged automatically. Nothing to click.
+
+Batching keeps that from becoming a release per bump. GitHub Actions updates
+are grouped into one PR; Cargo minor and patch updates into another. Major
+Cargo bumps still arrive on their own, because a `0.15 → 0.17` is worth seeing
+by itself.
+
+Action-only updates do not cut a release at all — the release job skips commits
+that touch nothing outside `.github/`, and a workflow bump cannot change the
+binary.
+
+**The auto-merge deliberately does not use GitHub's built-in one.** Native
+auto-merge only waits for checks a branch protection rule marks *required*, and
+`main` has no protection here — the release workflow pushes its version stamp
+back to it, which a protection rule would reject. With no required checks,
+`--auto` merges immediately, before CI has run. Triggering off CI completing
+successfully has no such ambiguity.
+
+**What this trades away:** CI proves it compiles, links, and passes tests on
+three platforms. It cannot prove a dependency did not change its runtime
+behaviour. This project already hit one of those — rfd 0.17 swapped its Linux
+dialog backend, which every test still passed through. It also means a
+compromised upstream release could land without a human reading it. That is the
+actual cost of auto-merge; the mitigation is that the CI here is unusually
+thorough for a tool this size, not that the risk is zero.
+
+To go back to merging by hand, delete
+`.github/workflows/dependabot-auto-merge.yml`.
+
 Each `platform/*/README.md` covers that OS's specific traps and how to debug a
 menu entry that does not appear.
 
