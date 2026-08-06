@@ -206,6 +206,19 @@ jobs:
           test -f "$XDG_CONFIG_HOME/Thunar/uca.xml"
 
           echo "--- @RCSYM@ was substituted everywhere ---"
+          # Menu entries name icons rather than pathing to them, so a typo
+          # renders a blank entry with no error anywhere. Assert every name
+          # referenced by an adapter actually resolves in the icon theme.
+          echo "--- icon names resolve ---"
+          for n in $(grep -rhoE 'rcsym-(file|folder)-(to|from)' \
+                       "$XDG_DATA_HOME"/kio "$XDG_DATA_HOME"/nemo \
+                       "$XDG_DATA_HOME"/nautilus-python "$XDG_CONFIG_HOME"/Thunar \
+                       2>/dev/null | sort -u); do
+            found=$(find "$XDG_DATA_HOME/icons/hicolor" -name "$n.png" | wc -l)
+            echo "    $n -> $found sizes"
+            [ "$found" -gt 0 ] || { echo "icon '$n' is referenced but not installed"; exit 1; }
+          done
+
           if grep -rl '@RCSYM@' "$FAKE"; then
             echo "placeholder left behind"; exit 1
           fi

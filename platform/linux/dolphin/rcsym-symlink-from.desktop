@@ -20,11 +20,11 @@ X-KDE-Submenu=Symlink From
 [Desktop Action SymlinkFromFolder]
 Name=Folder…
 Comment=Create a link inside this folder, pointing at another folder
-Icon=emblem-symbolic-link
+Icon=rcsym-folder-from
 Exec=@RCSYM@ from --dir %f --pick folder @FLAGS@
 
 [Desktop Action SymlinkFromFile]
 Name=File…
 Comment=Create a link inside this folder, pointing at a file
-Icon=emblem-symbolic-link
+Icon=rcsym-file-from
 Exec=@RCSYM@ from --dir %f --pick file @FLAGS@

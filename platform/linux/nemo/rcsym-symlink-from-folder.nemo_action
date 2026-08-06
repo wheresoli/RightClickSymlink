@@ -6,6 +6,6 @@ Comment=Create a link here, pointing at another folder
 # "show this when nothing is selected".
 Selection=none
 Exec=@RCSYM@ from --dir %P --pick folder @FLAGS@
-Icon-Name=emblem-symbolic-link
+Icon-Name=rcsym-folder-from
 Extensions=any;
 Quote=double

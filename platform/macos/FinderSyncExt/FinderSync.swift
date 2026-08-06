@@ -35,6 +35,19 @@ class FinderSync: FIFinderSync {
 
     // MARK: - Menu
 
+    /// Load a bundled menu icon.
+    ///
+    /// AppKit cannot read `.ico`, so the extension carries PNGs rather than the
+    /// Windows icon files. The asset is 32px and gets stamped down to 16pt, so
+    /// a Retina display draws it at full resolution.
+    private func icon(_ name: String) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.size = NSSize(width: 16, height: 16)
+        image.isTemplate = false
+        return image
+    }
+
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         let menu = NSMenu(title: "")
 
@@ -42,23 +55,36 @@ class FinderSync: FIFinderSync {
         case .contextualMenuForItems:
             // Right-clicked a file or folder: they are standing on the real
             // thing and need to say where the link goes.
-            menu.addItem(
-                withTitle: "Symlink To\u{2026}",
+            //
+            // The selection can be either, and a single menu entry covers both,
+            // so the icon is chosen from what is actually selected.
+            let selection = FIFinderSyncController.default().selectedItemURLs() ?? []
+            let allFolders = !selection.isEmpty && selection.allSatisfy { url in
+                (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            }
+
+            let item = NSMenuItem(
+                title: "Symlink To\u{2026}",
                 action: #selector(symlinkTo(_:)),
                 keyEquivalent: ""
             )
+            item.image = icon(allFolders ? "SL_Folder_To" : "SL_File_To")
+            menu.addItem(item)
 
         case .contextualMenuForContainer:
             // Right-clicked empty space inside a folder: they are standing on
             // the destination and need to say what to point at.
             //
             // One entry covers both files and folders here, unlike Windows and
-            // Linux, because NSOpenPanel can offer them simultaneously.
-            menu.addItem(
-                withTitle: "Symlink From\u{2026}",
+            // Linux, because NSOpenPanel can offer them simultaneously. The
+            // folder artwork stands for "link something into here".
+            let item = NSMenuItem(
+                title: "Symlink From\u{2026}",
                 action: #selector(symlinkFrom(_:)),
                 keyEquivalent: ""
             )
+            item.image = icon("SL_Folder_From")
+            menu.addItem(item)
 
         default:
             // .contextualMenuForSidebar and .toolbarItemMenu -- nothing sensible

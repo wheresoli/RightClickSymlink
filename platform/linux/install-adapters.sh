@@ -30,6 +30,18 @@ NAUTILUS_DIR="$DATA/nautilus-python/extensions"
 KDE_DIR="$DATA/kio/servicemenus"
 NEMO_DIR="$DATA/nemo/actions"
 THUNAR_UCA="$CONFIG/Thunar/uca.xml"
+ICON_THEME="$DATA/icons/hicolor"
+
+# Menu entries reference icons by *name*, not by path -- that is the only form
+# all four file managers agree on. A name resolves through the icon theme, so
+# the PNGs have to be installed into hicolor first or every entry renders blank.
+#
+# Not the .ico files: GTK and Qt icon loaders do not read them.
+ICON_SIZES="16 22 24 32 48 64 128 256"
+ICON_NAMES="SL_File_To:rcsym-file-to
+SL_File_From:rcsym-file-from
+SL_Folder_To:rcsym-folder-to
+SL_Folder_From:rcsym-folder-from"
 
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
@@ -84,6 +96,54 @@ fi
 # space.
 render() {
     sed -e "s|@RCSYM@|$RCSYM|g" -e "s|@FLAGS@|$FLAGS|g" -e 's/[[:space:]]*$//' "$1" > "$2"
+}
+
+# ---------------------------------------------------------------------------
+# Icons
+# ---------------------------------------------------------------------------
+
+do_icons() {
+    local src=""
+    for candidate in "$ROOT/assets/icons/png" "$HERE/icons/png"; do
+        [ -d "$candidate" ] && { src="$candidate"; break; }
+    done
+    local size stem name
+
+    if [ "$UNINSTALL" -eq 1 ]; then
+        for size in $ICON_SIZES; do
+            for pair in $ICON_NAMES; do
+                name="${pair#*:}"
+                rm -f "$ICON_THEME/${size}x${size}/apps/$name.png"
+            done
+        done
+        dim "  removed icons from $ICON_THEME"
+        return 0
+    fi
+
+    if [ -z "$src" ]; then
+        warn "no icon assets found -- menu entries will render without one"
+        return 0
+    fi
+
+    say "Icons"
+    for size in $ICON_SIZES; do
+        [ -d "$src/$size" ] || continue
+        mkdir -p "$ICON_THEME/${size}x${size}/apps"
+        for pair in $ICON_NAMES; do
+            stem="${pair%%:*}"
+            name="${pair#*:}"
+            [ -f "$src/$size/$stem.png" ] || continue
+            cp "$src/$size/$stem.png" "$ICON_THEME/${size}x${size}/apps/$name.png"
+        done
+    done
+    green "  installed into $ICON_THEME"
+
+    # Without this, GTK keeps serving a cached miss and the entries stay blank
+    # until the next login.
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+        gtk-update-icon-cache -q -t -f "$ICON_THEME" 2>/dev/null || true
+        dim "  refreshed the icon cache"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -229,6 +289,7 @@ PY
 
 # ---------------------------------------------------------------------------
 
+do_icons
 do_nautilus
 do_dolphin
 do_nemo

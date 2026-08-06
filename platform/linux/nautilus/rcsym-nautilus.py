@@ -79,6 +79,7 @@ class RcsymMenuProvider(GObject.GObject, Nautilus.MenuProvider):
             name="Rcsym::SymlinkTo",
             label="Symlink To…",
             tip="Create a symlink to this somewhere else",
+            icon="rcsym-folder-to",
         )
         item.connect("activate", lambda _menu: launch("to", *paths, *FLAGS))
         return [item]
@@ -96,6 +97,7 @@ class RcsymMenuProvider(GObject.GObject, Nautilus.MenuProvider):
             name="Rcsym::SymlinkFrom",
             label="Symlink From",
             tip="Create a link here, pointing at something else",
+            icon="rcsym-folder-from",
         )
         submenu = Nautilus.Menu()
         root.set_submenu(submenu)
@@ -104,6 +106,7 @@ class RcsymMenuProvider(GObject.GObject, Nautilus.MenuProvider):
             entry = Nautilus.MenuItem(
                 name=f"Rcsym::SymlinkFrom::{pick}",
                 label=label,
+                icon=f"rcsym-{pick}-from",
             )
             entry.connect(
                 "activate",

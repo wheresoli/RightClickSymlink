@@ -20,3 +20,7 @@ platform/windows/msix/Images/
 # Editor
 .vscode/
 .idea/
+
+# Python bytecode from the CI syntax check
+__pycache__/
+*.pyc

@@ -18,7 +18,7 @@
 -->
 <actions>
   <action>
-    <icon>emblem-symbolic-link</icon>
+    <icon>rcsym-folder-to</icon>
     <name>Symlink To…</name>
     <submenu></submenu>
     <unique-id>rcsym-symlink-to</unique-id>
@@ -36,7 +36,7 @@
   </action>
 
   <action>
-    <icon>emblem-symbolic-link</icon>
+    <icon>rcsym-folder-from</icon>
     <name>Folder…</name>
     <submenu>Symlink From</submenu>
     <unique-id>rcsym-symlink-from-folder</unique-id>
@@ -49,7 +49,7 @@
   </action>
 
   <action>
-    <icon>emblem-symbolic-link</icon>
+    <icon>rcsym-file-from</icon>
     <name>File…</name>
     <submenu>Symlink From</submenu>
     <unique-id>rcsym-symlink-from-file</unique-id>

@@ -5,6 +5,6 @@ Selection=none
 # %P is the directory currently being viewed. With Selection=none there is no
 # selected item to derive it from, so %P is the only token that works here.
 Exec=@RCSYM@ from --dir %P --pick file @FLAGS@
-Icon-Name=emblem-symbolic-link
+Icon-Name=rcsym-file-from
 Extensions=any;
 Quote=double
