@@ -13,4 +13,4 @@ Comment=Create a symlink to this somewhere else
 Icon=emblem-symbolic-link
 # %F is the full list of selected paths, so a multi-selection is one invocation
 # rather than one process per file.
-Exec=@RCSYM@ to %F
+Exec=@RCSYM@ to %F @FLAGS@

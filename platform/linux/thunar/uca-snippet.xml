@@ -22,7 +22,7 @@
     <name>Symlink To…</name>
     <submenu></submenu>
     <unique-id>rcsym-symlink-to</unique-id>
-    <command>@RCSYM@ to %F</command>
+    <command>@RCSYM@ to %F @FLAGS@</command>
     <description>Create a symlink to this somewhere else</description>
     <range>*</range>
     <patterns>*</patterns>
@@ -40,7 +40,7 @@
     <name>Folder…</name>
     <submenu>Symlink From</submenu>
     <unique-id>rcsym-symlink-from-folder</unique-id>
-    <command>@RCSYM@ from --dir %f --pick folder</command>
+    <command>@RCSYM@ from --dir %f --pick folder @FLAGS@</command>
     <description>Create a link inside this folder, pointing at another folder</description>
     <range>1</range>
     <patterns>*</patterns>
@@ -53,7 +53,7 @@
     <name>File…</name>
     <submenu>Symlink From</submenu>
     <unique-id>rcsym-symlink-from-file</unique-id>
-    <command>@RCSYM@ from --dir %f --pick file</command>
+    <command>@RCSYM@ from --dir %f --pick file @FLAGS@</command>
     <description>Create a link inside this folder, pointing at a file</description>
     <range>1</range>
     <patterns>*</patterns>

@@ -5,7 +5,7 @@ Comment=Create a link here, pointing at another folder
 # Nemo is the only one of the four file managers with a first-class way to say
 # "show this when nothing is selected".
 Selection=none
-Exec=@RCSYM@ from --dir %P --pick folder
+Exec=@RCSYM@ from --dir %P --pick folder @FLAGS@
 Icon-Name=emblem-symbolic-link
 Extensions=any;
 Quote=double

@@ -52,6 +52,14 @@ case "$(uname -s)" in
     *)      die "unsupported platform: $(uname -s). Windows users want install.ps1." ;;
 esac
 
+# Baked into every menu entry. A context menu cannot carry per-click options,
+# so preferences are fixed at install time -- the same arrangement as the
+# Windows registry verbs.
+FLAGS="--kind $KIND"
+if [ "$RELATIVE" -eq 1 ]; then
+    FLAGS="$FLAGS --relative"
+fi
+
 # Where this script lives, or empty when piped from curl -- which is precisely
 # the case where there is nothing local and we should download.
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
@@ -172,9 +180,11 @@ Build from source instead:
     esac
 
     # Release archives have one top-level directory.
-    SOURCE="$(find "$DOWNLOADED" -maxdepth 2 \( -name 'RightClickSymlink.app' -o -name 'rcsym' \) \
-        -print -quit | xargs dirname)"
-    [ -n "$SOURCE" ] || die "could not find the payload inside the archive"
+    # Not piped through xargs: a path with a space in it would be split into
+    # two arguments and dirname would report the wrong directory.
+    FOUND="$(find "$DOWNLOADED" -maxdepth 2 \( -name 'RightClickSymlink.app' -o -name 'rcsym' \) -print -quit)"
+    [ -n "$FOUND" ] || die "could not find the payload inside the archive"
+    SOURCE="$(dirname "$FOUND")"
 fi
 
 ok "using $SOURCE"
@@ -184,6 +194,15 @@ ok "using $SOURCE"
 # ---------------------------------------------------------------------------
 
 if [ "$OS" = macos ]; then
+    # The Finder front end runs its own dialog and calls `rcsym link` itself,
+    # so it never sees these. Warn rather than fail: the install is still
+    # worth doing, the user just should not think the option took effect.
+    if [ "$RELATIVE" -eq 1 ] || [ "$KIND" != "symlink" ]; then
+        warn "--relative and --kind are not plumbed through the Finder extension yet."
+        warn "Installing with defaults. Track it at:"
+        warn "  https://github.com/$REPO/issues"
+    fi
+
     step "Installing the app"
 
     mkdir -p "$MACOS_APPDIR"
@@ -254,7 +273,7 @@ mkdir -p "$PREFIX/share/rcsym"
 cp -r "$(dirname "$ADAPTERS")"/* "$PREFIX/share/rcsym/" 2>/dev/null || true
 chmod +x "$PREFIX/share/rcsym/install-adapters.sh" 2>/dev/null || true
 
-"$ADAPTERS" --bin "$PREFIX/bin/rcsym"
+"$ADAPTERS" --bin "$PREFIX/bin/rcsym" --flags "$FLAGS"
 
 echo
 ok "Installed."

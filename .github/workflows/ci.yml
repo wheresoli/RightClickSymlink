@@ -256,16 +256,25 @@ jobs:
           export XDG_DATA_HOME="$FAKE/.local/share"
           export XDG_CONFIG_HOME="$FAKE/.config"
 
-          ./install.sh --prefix "$FAKE/.local"
+          ./install.sh --prefix "$FAKE/.local" --relative
 
           test -x "$FAKE/.local/bin/rcsym" || { echo "binary not installed"; exit 1; }
           "$FAKE/.local/bin/rcsym" probe >/dev/null
-          test -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
+          ACTION="$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
+          test -f "$ACTION"
 
           # Adapters must point at the installed binary, not the build output --
           # otherwise the menus break as soon as target/ is cleaned.
-          grep -q "$FAKE/.local/bin/rcsym" "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action" \
+          grep -q "$FAKE/.local/bin/rcsym" "$ACTION" \
             || { echo "adapter points outside the install prefix"; exit 1; }
+
+          # --relative must actually reach the menu entry. It used to be parsed
+          # and silently dropped, which is worse than not offering it.
+          grep -q -- '--relative' "$ACTION" \
+            || { echo "--relative did not reach the adapter"; sed -n '/^Exec=/p' "$ACTION"; exit 1; }
+          if grep -rl '@FLAGS@' "$FAKE" 2>/dev/null | grep .; then
+            echo "@FLAGS@ placeholder left behind"; exit 1
+          fi
 
           ./install.sh --prefix "$FAKE/.local" --uninstall
           test ! -e "$FAKE/.local/bin/rcsym" || { echo "binary survived uninstall"; exit 1; }
@@ -294,9 +303,14 @@ jobs:
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
           # Write-Host is the correct choice for a user-facing installer, and
-          # the entry-point script legitimately has no return value to pipe.
-          $results = Invoke-ScriptAnalyzer -Path platform/windows, install.ps1 -Recurse -Severity Warning,Error `
-              -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
+          # the entry-point scripts legitimately have no return value to pipe.
+          #
+          # -Path takes a single string, not an array, so this loops rather
+          # than passing both at once.
+          $results = @('platform/windows', 'install.ps1') | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Warning, Error `
+              -ExcludeRule PSAvoidUsingWriteHost, PSUseShouldProcessForStateChangingFunctions
+          }
           if ($results) { $results | Format-Table -AutoSize; throw "PSScriptAnalyzer found issues" }
           Write-Output "clean"
 

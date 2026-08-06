@@ -28,6 +28,11 @@ from gi.repository import GObject, Nautilus  # noqa: E402
 
 RCSYM = "@RCSYM@"
 
+# Baked in at install time. A context menu has no way to carry per-click
+# options, so the defaults are fixed when the adapter is written. Empty string
+# splits to [], so an install with no flags adds no arguments.
+FLAGS = "@FLAGS@".split()
+
 
 def local_path(file_info):
     """Absolute path for a Nautilus file, or None if it is not local.
@@ -75,7 +80,7 @@ class RcsymMenuProvider(GObject.GObject, Nautilus.MenuProvider):
             label="Symlink To…",
             tip="Create a symlink to this somewhere else",
         )
-        item.connect("activate", lambda _menu: launch("to", *paths))
+        item.connect("activate", lambda _menu: launch("to", *paths, *FLAGS))
         return [item]
 
     def get_background_items(self, *args):
@@ -102,7 +107,9 @@ class RcsymMenuProvider(GObject.GObject, Nautilus.MenuProvider):
             )
             entry.connect(
                 "activate",
-                lambda _menu, pick=pick: launch("from", "--dir", path, "--pick", pick),
+                lambda _menu, pick=pick: launch(
+                    "from", "--dir", path, "--pick", pick, *FLAGS
+                ),
             )
             submenu.append_item(entry)
 

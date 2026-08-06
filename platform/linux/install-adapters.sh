@@ -18,6 +18,11 @@ RCSYM=""
 ONLY=""
 UNINSTALL=0
 
+# Extra rcsym flags baked into every menu entry. A context menu cannot carry
+# per-click options, so preferences are fixed at install time -- same as the
+# Windows registry verbs.
+FLAGS="${FLAGS:-}"
+
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}"
 
@@ -35,6 +40,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --bin)       RCSYM="$2"; shift 2 ;;
         --only)      ONLY="$2";  shift 2 ;;
+        --flags)     FLAGS="$2"; shift 2 ;;
         --uninstall) UNINSTALL=1; shift ;;
         -h|--help)   sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
@@ -71,9 +77,13 @@ EOF
     say "Using $RCSYM"
 fi
 
-# Substitute the binary path into a template.
+# Substitute the binary path and the baked-in flags into a template.
+#
+# The trailing-whitespace strip matters when FLAGS is empty: templates end with
+# " @FLAGS@", which would otherwise leave "Exec=rcsym to %F " with a dangling
+# space.
 render() {
-    sed "s|@RCSYM@|$RCSYM|g" "$1" > "$2"
+    sed -e "s|@RCSYM@|$RCSYM|g" -e "s|@FLAGS@|$FLAGS|g" -e 's/[[:space:]]*$//' "$1" > "$2"
 }
 
 # ---------------------------------------------------------------------------
@@ -176,13 +186,14 @@ do_thunar() {
     # re-running is idempotent and anything the user added by hand survives.
     mkdir -p "$(dirname "$THUNAR_UCA")"
     UCA="$THUNAR_UCA" SNIPPET="$HERE/thunar/uca-snippet.xml" \
-    BIN="${RCSYM:-}" REMOVE="$UNINSTALL" python3 <<'PY'
+    BIN="${RCSYM:-}" RCFLAGS="$FLAGS" REMOVE="$UNINSTALL" python3 <<'PY'
 import os
 import xml.etree.ElementTree as ET
 
 uca     = os.environ["UCA"]
 snippet = os.environ["SNIPPET"]
 binary  = os.environ["BIN"]
+flags   = os.environ.get("RCFLAGS", "")
 remove  = os.environ["REMOVE"] == "1"
 
 if os.path.exists(uca):
@@ -204,7 +215,10 @@ for action in list(root.findall("action")):
 if not remove:
     for action in ET.parse(snippet).getroot().findall("action"):
         cmd = action.find("command")
-        cmd.text = cmd.text.replace("@RCSYM@", binary)
+        # Both placeholders. This path does its own substitution rather than
+        # going through render(), so a new placeholder has to be added here too.
+        cmd.text = cmd.text.replace("@RCSYM@", binary).replace("@FLAGS@", flags)
+        cmd.text = " ".join(cmd.text.split())
         root.append(action)
 
 ET.indent(tree, space="  ")
