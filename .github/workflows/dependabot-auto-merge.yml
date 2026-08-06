@@ -1,0 +1,97 @@
+name: Dependabot auto-merge
+
+# Merges Dependabot pull requests once CI has gone green on them.
+#
+# WHY workflow_run AND NOT `gh pr merge --auto`
+#
+# GitHub's native auto-merge only waits for checks that are *required* by a
+# branch protection rule. This repo has none on `main` -- deliberately, because
+# the release workflow pushes its version stamp back to `main` and a protection
+# rule would reject that push. With no required checks, `--auto` merges
+# immediately, before CI has run. That is the opposite of what it looks like it
+# does, and it would merge red PRs.
+#
+# Triggering off CI *completing successfully* has no such ambiguity: the only
+# way to reach the merge step is for all seven jobs to have passed.
+#
+# A workflow_run workflow also runs from the default branch with a normal
+# GITHUB_TOKEN, rather than the read-only token Dependabot-triggered workflows
+# get -- which is the other reason this cannot be done from a `pull_request`
+# trigger.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: Merge if green
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    steps:
+      - name: Find the pull request
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # workflow_run.pull_requests is unreliable -- frequently empty even
+          # for same-repo branches -- so look the PR up by its head branch.
+          PR="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+                  --json number,author,isDraft,mergeable,title \
+                  --jq '.[0]')"
+
+          if [ -z "$PR" ] || [ "$PR" = "null" ]; then
+            echo "no open PR for $BRANCH"
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          NUMBER="$(printf '%s' "$PR" | jq -r '.number')"
+          AUTHOR="$(printf '%s' "$PR" | jq -r '.author.login')"
+          DRAFT="$(printf '%s'  "$PR" | jq -r '.isDraft')"
+          TITLE="$(printf '%s'  "$PR" | jq -r '.title')"
+
+          echo "#$NUMBER by $AUTHOR: $TITLE"
+
+          # The branch name prefix is attacker-controllable in principle -- anyone
+          # who can push a branch can call it dependabot/whatever. Authorship is
+          # the check that actually matters.
+          if [ "$AUTHOR" != "dependabot[bot]" ] && [ "$AUTHOR" != "app/dependabot" ]; then
+            echo "not a Dependabot PR, leaving it alone"
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$DRAFT" = "true" ]; then
+            echo "draft, leaving it alone"
+            echo "merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "merge=true"        >> "$GITHUB_OUTPUT"
+          echo "number=$NUMBER"    >> "$GITHUB_OUTPUT"
+
+      - name: Merge
+        if: steps.find.outputs.merge == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.find.outputs.number }}
+        run: |
+          set -euo pipefail
+          # Squash, so main stays linear and the commit subject is the PR title
+          # ("Bump X from A to B"). That subject is what the release workflow
+          # reads for its version bump.
+          gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch
+          echo "merged #$NUMBER"
