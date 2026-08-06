@@ -164,18 +164,35 @@ pub fn capabilities() -> Capabilities {
 fn probe_symlink() -> bool {
     let dir = std::env::temp_dir();
     let link = dir.join(format!(".rcsym-probe-{}", std::process::id()));
+
+    // Clear a leftover from an earlier run that died mid-probe and had this
+    // same PID. remove_dir first: a *directory* symlink is removed with
+    // RemoveDirectoryW, and remove_file (DeleteFileW) will not touch one.
+    let _ = std::fs::remove_dir(&link);
     let _ = std::fs::remove_file(&link);
 
-    // Point at the temp dir itself: guaranteed to exist, so a failure here is
-    // unambiguously about privilege and not about a missing target.
+    // Point at a path that deliberately does NOT exist.
+    //
+    // The privilege is enforced when the link is *created*, not when it
+    // resolves, so a dangling target measures exactly the same thing.
+    //
+    // Pointing at the temp directory itself -- which is the obvious choice,
+    // since it is guaranteed to exist -- makes the probe self-referential.
+    // The link is removed microseconds later, but if the process is killed in
+    // between, that leaves a directory that contains itself sitting in %TEMP%,
+    // and any tree walker without cycle detection will descend it forever.
+    // Disk cleaners, backup agents and search indexers all walk %TEMP%.
+    //
+    // A dangling link leaks as an inert dead pointer instead.
+    let target = dir.join(".rcsym-probe-target-that-does-not-exist");
+
     let l = wide_link_path(&link);
-    let t = wide(dir.as_os_str());
+    let t = wide(target.as_os_str());
     let flags = SYMBOLIC_LINK_FLAG_DIRECTORY | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 
     let ok = unsafe { CreateSymbolicLinkW(l.as_ptr(), t.as_ptr(), flags) } != 0;
     if ok {
-        // A directory symlink is removed with remove_dir, which unlinks the
-        // link itself and leaves the target alone.
+        // remove_dir unlinks the link itself and never follows it.
         let _ = std::fs::remove_dir(&link);
     }
     ok

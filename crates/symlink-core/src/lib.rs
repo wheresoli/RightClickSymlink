@@ -243,4 +243,57 @@ mod tests {
         fs::remove_dir(&link).unwrap();
         assert!(target.join("inside.txt").exists());
     }
+
+    /// The capability probe is the one thing this crate writes outside the link
+    /// it was asked to create, so it must leave nothing in %TEMP%.
+    #[cfg(windows)]
+    #[test]
+    fn the_capability_probe_leaves_nothing_in_temp() {
+        // capabilities() is cached per process, so this may be reading the
+        // aftermath of an earlier call rather than triggering one. Either way
+        // the assertion is the same: no probe artifact survives.
+        let _ = capabilities();
+
+        let temp = std::env::temp_dir();
+        let leftovers: Vec<_> = fs::read_dir(&temp)
+            .expect("temp dir should be readable")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".rcsym-probe"))
+            .collect();
+
+        assert!(
+            leftovers.is_empty(),
+            "probe artifacts left in {}: {leftovers:?}",
+            temp.display()
+        );
+    }
+
+    /// Whatever the probe points at must not be the directory the probe lives
+    /// in. A self-referential directory symlink left behind by a killed process
+    /// is a cycle that anything walking %TEMP% will spin on.
+    #[cfg(windows)]
+    #[test]
+    fn a_leaked_probe_would_not_be_a_directory_cycle() {
+        let temp = std::env::temp_dir();
+        let link = temp.join(format!(".rcsym-probe-cycletest-{}", std::process::id()));
+        let _ = fs::remove_dir(&link);
+
+        // Same call the probe makes.
+        let target = temp.join(".rcsym-probe-target-that-does-not-exist");
+        std::os::windows::fs::symlink_dir(&target, &link)
+            .expect("creating a dangling directory symlink should succeed");
+
+        // Created, so the privilege was genuinely exercised...
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        // ...but it resolves nowhere, so it cannot be descended into.
+        assert!(!link.exists(), "the probe target must not exist");
+        assert_ne!(
+            link.read_link().unwrap(),
+            temp,
+            "the probe must not point at its own directory"
+        );
+
+        fs::remove_dir(&link).unwrap();
+    }
 }
