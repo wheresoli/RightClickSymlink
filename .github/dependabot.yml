@@ -15,3 +15,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      # One PR for all action bumps. Ungrouped, a routine round of updates
+      # arrives as five separate PRs and five separate releases.
+      actions:
+        patterns: ["*"]

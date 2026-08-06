@@ -21,4 +21,12 @@ path = "src/bin/rcsymw.rs"
 [dependencies]
 symlink-core = { path = "../symlink-core" }
 clap = { version = "4", features = ["derive"] }
-rfd = "0.15"
+# default-features = false drops rfd's "wayland" feature, which exists to
+# parent a dialog to a Wayland surface. This process has no window -- it is
+# invoked by a context menu, pops a dialog, and exits -- so there is nothing to
+# parent to, and the feature only adds a link-time dependency on
+# libwayland-client that would make every Linux build need libwayland-dev.
+#
+# xdg-portal still handles the dialogs themselves, on X11 and Wayland alike;
+# the portal is a D-Bus service and does not care which compositor is running.
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
