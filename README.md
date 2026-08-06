@@ -216,6 +216,35 @@ refuses-to-overwrite guarantees. Assertions that need a capability the machine
 lacks skip themselves, so it is meaningful on a locked-down Windows box and on a
 Linux CI runner alike.
 
+### Releases publish themselves
+
+Merge to `main`; once CI goes green, a version is tagged, built for all three
+platforms, and published. There is no manual release step.
+
+The trigger is CI *completing successfully*, not the push itself — a push
+trigger would race CI and could publish binaries that never passed a test.
+
+Version comes from the commit message on `main`:
+
+| In the commit message | Result |
+|---|---|
+| *(nothing special)* | patch bump — `0.1.3` → `0.1.4` |
+| `[minor]` | `0.1.3` → `0.2.0` |
+| `[major]` | `0.1.3` → `1.0.0` |
+| `[skip release]` | no release |
+
+Commits touching only `*.md`, `.github/`, or `LICENSE` are skipped
+automatically — documentation does not need new binaries.
+
+The tag job stamps the version into `Cargo.toml` and `Cargo.lock` and pushes
+that back to `main`. It cannot loop: pushes made with `GITHUB_TOKEN` do not
+trigger workflows, and the commit carries `[skip release]` anyway.
+
+To publish a specific version by hand, run the **Release** workflow from the
+Actions tab with a `version` input. It also takes a `dry_run` flag that builds
+all three platforms and uploads the artifacts without tagging or publishing —
+useful for checking a packaging change before it becomes a real release.
+
 Each `platform/*/README.md` covers that OS's specific traps and how to debug a
 menu entry that does not appear.
 

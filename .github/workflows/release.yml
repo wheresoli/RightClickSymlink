@@ -1,13 +1,25 @@
 name: Release
 
+# Releases publish themselves. Merge to main, and once CI is green a new
+# version is tagged, built for all three platforms, and published.
+#
+# Triggering on workflow_run rather than on push is the important part: a push
+# trigger would race CI and could publish binaries that never passed a test.
+# This only fires after CI has actually gone green on main.
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Tag to build (dry run; no release is published)"
+      version:
+        description: "Version to publish (e.g. 1.2.0). Blank = bump the patch."
         required: false
+      dry_run:
+        description: "Build everything but do not tag or publish"
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -15,9 +27,157 @@ env:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # Decide whether to release, and as what version.
+  #
+  # Bump rules, from the commit message on main:
+  #   [skip release]  no release
+  #   [minor]         x.Y.0
+  #   [major]         X.0.0
+  #   anything else   x.y.Z
+  # ---------------------------------------------------------------------------
+  decide:
+    name: Decide
+    runs-on: ubuntu-latest
+    # Never publish off a red CI run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
+      sha: ${{ steps.decide.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The commit CI actually validated, not whatever main points at now.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          OVERRIDE: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          SHA="$(git rev-parse HEAD)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          MSG="$(git log -1 --pretty=%B)"
+          LATEST="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+
+          skip() { echo "release=false" >> "$GITHUB_OUTPUT"; echo "SKIP: $1"; exit 0; }
+
+          case "$MSG" in
+            *"[skip release]"*) skip "commit asked to skip" ;;
+          esac
+
+          if [ -n "$LATEST" ]; then
+            # Docs and workflow edits do not need new binaries. Only applies
+            # once something has been released; the first one always goes.
+            CHANGED="$(git diff --name-only "${LATEST}..HEAD" || true)"
+            if [ -z "$CHANGED" ]; then skip "nothing changed since $LATEST"; fi
+            if ! printf '%s\n' "$CHANGED" \
+                 | grep -qvE '(\.md$|^\.github/|^LICENSE$|^\.gitignore$|^\.gitattributes$)'; then
+              skip "only docs/CI changed since $LATEST"
+            fi
+          fi
+
+          if [ -n "${OVERRIDE:-}" ]; then
+            VERSION="${OVERRIDE#v}"
+          elif [ -z "$LATEST" ]; then
+            # First release: whatever Cargo.toml already says.
+            VERSION="$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')"
+          else
+            BASE="${LATEST#v}"
+            MAJOR="${BASE%%.*}"; REST="${BASE#*.}"
+            MINOR="${REST%%.*}"; PATCH="${REST#*.}"
+            case "$MSG" in
+              *"[major]"*) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              *"[minor]"*) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              *)           PATCH=$((PATCH + 1)) ;;
+            esac
+            VERSION="$MAJOR.$MINOR.$PATCH"
+          fi
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            skip "v$VERSION already exists"
+          fi
+
+          echo "release=true"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing v$VERSION from $SHA"
+
+  # ---------------------------------------------------------------------------
+  # Stamp the version and create the tag.
+  # ---------------------------------------------------------------------------
+  tag:
+    name: Tag
+    needs: decide
+    if: needs.decide.outputs.release == 'true' && !inputs.dry_run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.decide.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Stamp the version into Cargo.toml and Cargo.lock
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Only [workspace.package]; the member crates inherit it.
+          sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" Cargo.toml
+
+          # Keep the lockfile honest without needing a Rust toolchain here.
+          VERSION="$VERSION" python3 - <<'PY'
+          import os, pathlib, re
+          version = os.environ["VERSION"]
+          p = pathlib.Path("Cargo.lock")
+          text = p.read_text()
+          for crate in ("rcsym", "symlink-core"):
+              text = re.sub(
+                  r'(\[\[package\]\]\nname = "%s"\nversion = ")[^"]*(")' % crate,
+                  lambda m: m.group(1) + version + m.group(2),
+                  text,
+              )
+          p.write_text(text)
+          PY
+
+          grep -m1 '^version' Cargo.toml
+          grep -A1 'name = "rcsym"' Cargo.lock | head -2
+
+      - name: Commit and tag
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # A push made with GITHUB_TOKEN does not trigger workflows, so this
+          # cannot loop back into CI and round again. The [skip release] marker
+          # is belt-and-braces in case that ever changes.
+          if ! git diff --quiet; then
+            git commit -aqm "Release v$VERSION [skip release]"
+            git push origin "HEAD:main"
+          fi
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
+
+  # ---------------------------------------------------------------------------
+  # Build.
+  # ---------------------------------------------------------------------------
   build:
     name: ${{ matrix.name }}
+    needs: [decide, tag]
+    if: always() && needs.decide.outputs.release == 'true' && needs.tag.result != 'failure'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,6 +192,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The tag when there is one; the validated commit on a dry run.
+          ref: ${{ inputs.dry_run && needs.decide.outputs.sha || format('v{0}', needs.decide.outputs.version) }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,8 +209,8 @@ jobs:
           sudo apt-get install -y libgtk-3-dev
 
       # -------------------------------------------------------------------
-      # Windows: both binaries plus the registration scripts, so the zip is
-      # self-contained -- unzip, run register.ps1, done.
+      # Windows: binaries plus install.ps1, so the zip is self-contained --
+      # unzip, run install.ps1, done.
       # -------------------------------------------------------------------
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -57,6 +220,7 @@ jobs:
           $out = "dist/RightClickSymlink-windows-x64"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           Copy-Item target/release/rcsym.exe, target/release/rcsymw.exe $out
+          Copy-Item install.ps1 $out
           Copy-Item platform/windows/register.ps1, platform/windows/unregister.ps1 $out
           Copy-Item platform/windows/README.md $out/INSTALL.md
           Copy-Item LICENSE $out
@@ -70,17 +234,19 @@ jobs:
           out="dist/RightClickSymlink-linux-x64"
           mkdir -p "$out"
           cp target/release/rcsym "$out/"
+          cp install.sh "$out/"
           cp -r platform/linux "$out/integration"
           cp platform/linux/README.md "$out/INSTALL.md"
           cp LICENSE "$out/"
+          chmod +x "$out/install.sh" "$out/integration/install-adapters.sh"
           tar -czf dist/RightClickSymlink-linux-x64.tar.gz -C dist RightClickSymlink-linux-x64
 
       # -------------------------------------------------------------------
       # macOS: the full .app, ad-hoc signed.
       #
       # NOT notarized -- that needs a paid Apple Developer account and secrets
-      # this workflow does not have. Gatekeeper will warn on another machine;
-      # right-click > Open is the workaround. See platform/macos/README.md.
+      # this workflow does not have. Gatekeeper warns on another machine;
+      # install.sh clears the quarantine flag for a deliberate install.
       # -------------------------------------------------------------------
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -89,8 +255,10 @@ jobs:
           out="dist/RightClickSymlink-macos-universal"
           mkdir -p "$out"
           cp -R platform/macos/build/RightClickSymlink.app "$out/"
+          cp install.sh "$out/"
           cp platform/macos/README.md "$out/INSTALL.md"
           cp LICENSE "$out/"
+          chmod +x "$out/install.sh"
           # ditto rather than zip: it preserves the bundle's symlinks and
           # extended attributes, which a plain zip silently flattens.
           ditto -c -k --sequesterRsrc --keepParent "$out" dist/RightClickSymlink-macos-universal.zip
@@ -103,11 +271,12 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
 
+  # ---------------------------------------------------------------------------
   publish:
-    name: Publish release
-    needs: build
+    name: Publish
+    needs: [decide, build]
+    if: needs.decide.outputs.release == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -119,6 +288,8 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.decide.outputs.version }}
+          name: v${{ needs.decide.outputs.version }}
           files: |
             dist/*.zip
             dist/*.tar.gz
@@ -126,24 +297,29 @@ jobs:
           body: |
             ## Install
 
-            **Windows** — unzip, then:
+            **Windows** — PowerShell, no admin:
             ```powershell
-            .\register.ps1
+            irm https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.ps1 | iex
             ```
-            On Windows 11 the entries appear under "Show more options".
 
-            **macOS** — unzip, drag the app to `/Applications`, open it once,
-            then enable it in System Settings › General › Login Items &
-            Extensions › Finder Extensions.
-
-            Not notarized: macOS will warn on first open. Right-click › Open.
-
-            **Linux** — extract, then:
+            **macOS / Linux:**
             ```bash
-            ./integration/install-adapters.sh --bin ./rcsym
+            curl -fsSL https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.sh | bash
             ```
+
+            Or download an archive below, unpack it, and run `install.ps1` /
+            `install.sh` from inside it.
+
+            On Windows 11 the entries appear under **Show more options**.
+            On macOS, enable the extension in System Settings › General ›
+            Login Items & Extensions › Finder Extensions. The app is ad-hoc
+            signed rather than notarized, so Gatekeeper warns on first open.
+
+            Uninstall with `install.ps1 -Uninstall` / `install.sh --uninstall`,
+            or from Settings › Apps on Windows.
 
             ---
 
-            Creating a link never overwrites anything. See the README for what
-            that guarantees and where the real hazards are.
+            Creating a link never overwrites anything — an occupied link path
+            is an error, checked before the filesystem is touched. See the
+            README for what that guarantees and where the real hazards are.
