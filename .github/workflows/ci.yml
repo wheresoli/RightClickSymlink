@@ -272,8 +272,13 @@ jobs:
           # and silently dropped, which is worse than not offering it.
           grep -q -- '--relative' "$ACTION" \
             || { echo "--relative did not reach the adapter"; sed -n '/^Exec=/p' "$ACTION"; exit 1; }
-          if grep -rl '@FLAGS@' "$FAKE" 2>/dev/null | grep .; then
-            echo "@FLAGS@ placeholder left behind"; exit 1
+          # Only the RENDERED entries. install.sh also keeps a copy of the
+          # adapter templates under share/rcsym so --uninstall works later, and
+          # those still contain the placeholders by design.
+          if grep -rl '@RCSYM@\|@FLAGS@' \
+               "$XDG_DATA_HOME/nautilus-python" "$XDG_DATA_HOME/kio" \
+               "$XDG_DATA_HOME/nemo" "$XDG_CONFIG_HOME/Thunar" 2>/dev/null | grep .; then
+            echo "placeholder left behind in a rendered entry"; exit 1
           fi
 
           ./install.sh --prefix "$FAKE/.local" --uninstall

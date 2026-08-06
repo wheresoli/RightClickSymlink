@@ -268,9 +268,12 @@ for candidate in "$HERE/platform/linux/install-adapters.sh" \
 done
 [ -n "$ADAPTERS" ] || die "could not find install-adapters.sh"
 
-# Keep a copy so --uninstall works later from anywhere.
+# Keep a copy of the adapter templates so --uninstall works later from
+# anywhere, not just from a checkout. These deliberately still contain the
+# @RCSYM@ / @FLAGS@ placeholders -- they are sources, not rendered output.
 mkdir -p "$PREFIX/share/rcsym"
 cp -r "$(dirname "$ADAPTERS")"/* "$PREFIX/share/rcsym/" 2>/dev/null || true
+find "$PREFIX/share/rcsym" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 chmod +x "$PREFIX/share/rcsym/install-adapters.sh" 2>/dev/null || true
 
 "$ADAPTERS" --bin "$PREFIX/bin/rcsym" --flags "$FLAGS"
