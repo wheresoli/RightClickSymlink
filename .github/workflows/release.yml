@@ -68,8 +68,12 @@ jobs:
           SHA="$(git rev-parse HEAD)"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-          MSG="$(git log -1 --pretty=%B)"
+          # Subject line only, not the full body. Scanning the body means any
+          # commit that merely *describes* a marker -- release notes, a doc
+          # change, this very feature -- silently triggers it.
+          MSG="$(git log -1 --pretty=%s)"
           LATEST="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+          echo "subject: $MSG"
 
           skip() { echo "release=false" >> "$GITHUB_OUTPUT"; echo "SKIP: $1"; exit 0; }
 

@@ -224,14 +224,18 @@ platforms, and published. There is no manual release step.
 The trigger is CI *completing successfully*, not the push itself — a push
 trigger would race CI and could publish binaries that never passed a test.
 
-Version comes from the commit message on `main`:
+Version comes from the **subject line** of the commit on `main`:
 
-| In the commit message | Result |
+| In the commit subject | Result |
 |---|---|
 | *(nothing special)* | patch bump — `0.1.3` → `0.1.4` |
 | `[minor]` | `0.1.3` → `0.2.0` |
 | `[major]` | `0.1.3` → `1.0.0` |
 | `[skip release]` | no release |
+
+Subject line specifically, not the whole message. Scanning the body means a
+commit that merely *describes* one of these markers — release notes, a doc
+change, the commit that added this feature — silently triggers it.
 
 Commits touching only `*.md`, `.github/`, or `LICENSE` are skipped
 automatically — documentation does not need new binaries.
