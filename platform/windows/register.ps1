@@ -47,18 +47,47 @@ $ErrorActionPreference = 'Stop'
 
 # Verb key names. Prefixed so they are trivially findable in regedit and
 # unambiguous to remove.
+#
+# The first one contains a literal asterisk -- that is the shell's key for
+# "any file", not a wildcard.
 $Verbs = @(
-    @{ Key = 'Software\Classes\*\shell\RightClickSymlink.To';                        Label = 'Symlink To...' }
-    @{ Key = 'Software\Classes\Directory\shell\RightClickSymlink.To';                Label = 'Symlink To...' }
+    @{ Key = 'Software\Classes\*\shell\RightClickSymlink.To';                           Label = 'Symlink To...' }
+    @{ Key = 'Software\Classes\Directory\shell\RightClickSymlink.To';                   Label = 'Symlink To...' }
     @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFolder'; Label = 'Symlink From Folder...' }
     @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFile';   Label = 'Symlink From File...' }
 )
 
+# ---------------------------------------------------------------------------
+# Registry access
+#
+# These use the .NET registry API rather than the HKCU: PSDrive, because
+# PowerShell's provider cmdlets treat `*` in a path as a WILDCARD. The shell's
+# "any file" key is literally named `*`, so
+#
+#     Test-Path 'HKCU:\Software\Classes\*\shell\RightClickSymlink.To'
+#
+# does not test one key -- it globs every file-association key under
+# Software\Classes looking for matches. On a real profile with ~900 of them
+# that takes minutes; on a fresh CI runner with almost none it returns
+# instantly, which is exactly how this survived a green test run.
+#
+# New-Item has no -LiteralPath in PowerShell 5.1, so escaping the path is not
+# an option either. The .NET API takes names literally and has no wildcard
+# concept at all.
+# ---------------------------------------------------------------------------
+
+function Test-VerbKey {
+    param([string]$Key)
+    $handle = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($Key)
+    if ($handle) { $handle.Dispose(); return $true }
+    return $false
+}
+
 function Remove-Registration {
     foreach ($v in $Verbs) {
-        $path = "HKCU:\$($v.Key)"
-        if (Test-Path $path) {
-            Remove-Item -Path $path -Recurse -Force -Confirm:$false
+        if (Test-VerbKey $v.Key) {
+            # $false: do not throw when the subkey is already gone.
+            [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($v.Key, $false)
             Write-Host "removed  $($v.Key)"
         }
     }
@@ -109,32 +138,38 @@ if ($Relative) { $flags = "$flags --relative" }
 Remove-Registration
 
 foreach ($v in $Verbs) {
-    $path = "HKCU:\$($v.Key)"
-    New-Item -Path $path -Force | Out-Null
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($v.Key)
+    try {
+        $key.SetValue('MUIVerb', $v.Label)
+        $key.SetValue('Icon', $ExePath)
 
-    New-ItemProperty -Path $path -Name 'MUIVerb' -Value $v.Label -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $path -Name 'Icon'    -Value $ExePath -PropertyType String -Force | Out-Null
+        if ($v.Key -like '*Background*') {
+            # %V, NOT %1. For a Background verb %1 is empty -- the verb fires
+            # and receives nothing. This is the single most common way to get
+            # this wrong, and it fails silently.
+            $pick = 'folder'
+            if ($v.Key -like '*FromFile') { $pick = 'file' }
+            $cmd = "`"$ExePath`" from --dir `"%V`" --pick $pick $flags"
+        }
+        else {
+            $cmd = "`"$ExePath`" to `"%1`" $flags"
 
-    if ($v.Key -like '*Background*') {
-        # %V, NOT %1. For a Background verb %1 is empty -- the verb fires and
-        # receives nothing. This is the single most common way to get this
-        # wrong, and it fails silently.
-        $pick = 'folder'
-        if ($v.Key -like '*FromFile') { $pick = 'file' }
-        $cmd = "`"$ExePath`" from --dir `"%V`" --pick $pick $flags"
+            # Without this, selecting 12 files and clicking the verb launches 12
+            # separate processes. "Player" hands the whole selection to one
+            # invocation instead. Explorer stops honouring the verb entirely
+            # above ~15 selected items, which is a shell limit we cannot raise.
+            $key.SetValue('MultiSelectModel', 'Player')
+        }
+
+        $commandKey = $key.CreateSubKey('command')
+        try {
+            # '' is the key's default value, what regedit shows as (Default).
+            $commandKey.SetValue('', $cmd)
+        }
+        finally { $commandKey.Dispose() }
     }
-    else {
-        $cmd = "`"$ExePath`" to `"%1`" $flags"
+    finally { $key.Dispose() }
 
-        # Without this, selecting 12 files and clicking the verb launches 12
-        # separate processes. "Player" hands the whole selection to one
-        # invocation instead. Explorer stops honouring the verb entirely above
-        # ~15 selected items, which is a shell limit we cannot raise.
-        New-ItemProperty -Path $path -Name 'MultiSelectModel' -Value 'Player' -PropertyType String -Force | Out-Null
-    }
-
-    New-Item -Path "$path\command" -Force | Out-Null
-    Set-ItemProperty -Path "$path\command" -Name '(Default)' -Value $cmd
     Write-Host "added    $($v.Key)"
 }
 

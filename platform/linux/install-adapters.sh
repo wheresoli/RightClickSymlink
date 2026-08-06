@@ -2,10 +2,10 @@
 #
 # Install Right Click Symlink into whichever file managers are present.
 #
-#   ./install.sh                        auto-detect, use ./target/release/rcsym
-#   ./install.sh --bin /usr/bin/rcsym   use a specific binary
-#   ./install.sh --only nautilus        just one file manager
-#   ./install.sh --uninstall            remove everything
+#   ./install-adapters.sh                        auto-detect, use ./target/release/rcsym
+#   ./install-adapters.sh --bin /usr/bin/rcsym   use a specific binary
+#   ./install-adapters.sh --only nautilus        just one file manager
+#   ./install-adapters.sh --uninstall            remove everything
 #
 # Everything is written under $HOME. No root, no system directories.
 #
@@ -61,7 +61,7 @@ Build it:
     cargo build --release
 
 Or point at one:
-    ./install.sh --bin /path/to/rcsym
+    ./install-adapters.sh --bin /path/to/rcsym
 EOF
             exit 1
         fi

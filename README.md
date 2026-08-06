@@ -41,7 +41,7 @@ is developed on Windows and CI is the only place the Unix paths execute at all.
   refuses-to-overwrite guarantees.
 - The Swift compiles, the `.app` assembles universal (arm64 + x86_64), and
   `codesign --verify --deep --strict` passes.
-- `install.sh` runs against a throwaway `HOME` with stub file managers on
+- `install-adapters.sh` runs against a throwaway `HOME` with stub file managers on
   `PATH`, asserting all four adapters install, that no `@RCSYM@` placeholder
   survives, that re-running does not duplicate the Thunar action, and that
   uninstall leaves nothing behind.
@@ -85,28 +85,139 @@ rcsym link --target X --into Y --name Z --no-confirm  # headless, no dialogs
 rcsym probe                                           # what can this machine do?
 ```
 
-## Build
+## Install
+
+Grab a [release](https://github.com/wheresoli/RightClickSymlink/releases), or
+let the installer fetch it for you.
+
+**Windows** — PowerShell, no admin:
+
+```powershell
+irm https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.ps1 | iex
+```
+
+**macOS / Linux:**
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.sh | bash
+```
+
+To pass options through a piped install:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.ps1))) -Relative
+```
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wheresoli/RightClickSymlink/main/install.sh | bash -s -- --relative
+```
+
+### What that actually does
+
+Everything is per-user. No `sudo`, no admin prompt, no services, nothing written
+outside your profile.
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Binary | `%LOCALAPPDATA%\Programs\RightClickSymlink` | `~/Applications/RightClickSymlink.app` | `~/.local/bin/rcsym` |
+| Integration | 4 verbs under `HKCU:\Software\Classes` | Finder Sync extension | adapter files under `~/.local/share`, `~/.config` |
+| Uninstaller | Settings › Apps | `./install.sh --uninstall` | `./install.sh --uninstall` |
+
+The installer copies the binary somewhere permanent **before** registering
+anything. That matters: the context menu stores an absolute path, so
+registering straight out of an unzipped Downloads folder gives you menu entries
+that break silently the day you clean up Downloads.
+
+macOS needs one manual step the installer cannot do for you — enable the
+extension in **System Settings › General › Login Items & Extensions › Finder
+Extensions**. Apple requires a human for that.
+
+### Uninstall
+
+```powershell
+.\install.ps1 -Uninstall
+```
+
+```bash
+./install.sh --uninstall
+```
+
+Windows also lists it in **Settings › Apps › Installed apps** like any other
+program. Symlinks you already made are left alone either way — they are ordinary
+filesystem objects with no connection to the tool that created them.
+
+### Why a script and not an `.msi` / `.pkg`
+
+An unsigned `.exe` or `.msi` installer triggers a harsher SmartScreen warning
+than a PowerShell script does, and fixing that means buying a code-signing
+certificate. Same story on macOS: the `.app` is ad-hoc signed, not notarized,
+because notarization needs a paid Apple Developer account. Until either of those
+is worth paying for, a script that you can read before running it is the more
+honest option.
+
+## Build from source
+
+Needs [Rust](https://rustup.rs) (1.74+). Nothing else on Windows or Linux; macOS
+also needs the Xcode command line tools (`xcode-select --install`).
+
+```bash
+git clone https://github.com/wheresoli/RightClickSymlink
+cd RightClickSymlink
 cargo build --release
 ```
 
-Then the per-platform step:
+Then run the same installer — it detects the local build and uses it instead of
+downloading:
 
 ```powershell
-.\platform\windows\register.ps1
+.\install.ps1
 ```
 
 ```bash
-./platform/macos/build.sh          # then enable it in System Settings
+./install.sh
+```
+
+### Running the pieces directly
+
+The installer is a wrapper. If you want to drive the parts yourself — say, to
+test a change without installing:
+
+```powershell
+.\platform\windows\register.ps1 -ExePath .\target\release\rcsymw.exe
 ```
 
 ```bash
-./platform/linux/install.sh        # auto-detects your file manager
+./platform/macos/build.sh                    # assembles the .app, ad-hoc signed
 ```
 
-Each `platform/*/README.md` covers installation, the traps specific to that OS,
-and how to debug a menu entry that does not appear.
+```bash
+./platform/linux/install-adapters.sh         # just the file-manager adapters
+```
+
+Or skip the shell integration entirely and use the CLI, which is the same code
+path the menus invoke:
+
+```bash
+./target/release/rcsym link --target /some/dir --into /elsewhere --dry-run
+```
+
+### Tests
+
+```bash
+cargo test --workspace
+```
+
+```bash
+./scripts/smoke.sh
+```
+
+`smoke.sh` drives the built binary against a real filesystem, including the
+refuses-to-overwrite guarantees. Assertions that need a capability the machine
+lacks skip themselves, so it is meaningful on a locked-down Windows box and on a
+Linux CI runner alike.
+
+Each `platform/*/README.md` covers that OS's specific traps and how to debug a
+menu entry that does not appear.
 
 ## It cannot overwrite anything
 

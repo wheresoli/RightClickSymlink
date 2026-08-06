@@ -5,7 +5,7 @@ context menu"; each file manager has its own mechanism, so this is one small
 adapter per file manager over the same binary.
 
 > **Installed in CI, never run in a real file manager.** Every push runs
-> `install.sh` on an Ubuntu runner against a throwaway `HOME` with stub file
+> `install-adapters.sh` on an Ubuntu runner against a throwaway `HOME` with stub file
 > managers on `PATH`, checking that all four adapters install, that re-running
 > is idempotent, and that uninstall leaves nothing behind. What CI cannot do is
 > open a real Nautilus and look at the menu.
@@ -21,13 +21,13 @@ the name, and absolute-vs-relative in one step, instead of make-link-then-
 move-then-rename. Worth having, but this is a convenience, not a gap-filler.
 
 ```bash
-./platform/linux/install.sh
+./platform/linux/install-adapters.sh
 ```
 
 Detects what you have installed, writes everything under `$HOME`, needs no root.
 
 ```bash
-./platform/linux/install.sh --uninstall
+./platform/linux/install-adapters.sh --uninstall
 ```
 
 ## What gets installed where
@@ -70,7 +70,7 @@ submenu. macOS gets a single entry because `NSOpenPanel` can do both at once.
 ### Nautilus
 
 Needs the `nautilus-python` bindings, which are a separate package. Without them
-the extension file sits there doing nothing, so `install.sh` checks and warns.
+the extension file sits there doing nothing, so `install-adapters.sh` checks and warns.
 
 ```bash
 sudo apt install python3-nautilus     # Debian/Ubuntu
@@ -88,13 +88,13 @@ The provider takes `*args` and reads the last element because Nautilus 3.x
 passed `(window, files)` and 4.x passes just `(files)`. That absorbs both
 without version detection.
 
-Extensions load once at startup — `install.sh` runs `pkill -x nautilus` for you.
+Extensions load once at startup — `install-adapters.sh` runs `pkill -x nautilus` for you.
 
 ### Dolphin
 
 Plasma 5.85 moved service menus from `~/.local/share/kservices5/ServiceMenus/`
 to `~/.local/share/kio/servicemenus/`, and started requiring that the `.desktop`
-files be **executable**. `install.sh` writes to the new path, chmods them, and
+files be **executable**. `install-adapters.sh` writes to the new path, chmods them, and
 cleans up the old location on uninstall.
 
 No restart needed; Dolphin reads them on the next menu open.

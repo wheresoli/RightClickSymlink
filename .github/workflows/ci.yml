@@ -162,7 +162,7 @@ jobs:
           sudo apt-get install -y shellcheck libgtk-3-dev
 
       - name: Shellcheck
-        run: shellcheck -S warning scripts/smoke.sh platform/linux/install.sh platform/macos/build.sh
+        run: shellcheck -S warning install.sh scripts/smoke.sh platform/linux/install-adapters.sh platform/macos/build.sh
 
       - name: Nautilus extension parses
         run: python3 -m py_compile platform/linux/nautilus/rcsym-nautilus.py
@@ -191,12 +191,12 @@ jobs:
       - name: Build rcsym
         run: cargo build --release
 
-      # Run install.sh for real against a throwaway HOME.
+      # Run install-adapters.sh for real against a throwaway HOME.
       #
       # The script gates each adapter on `command -v <file manager>`, so stub
       # executables stand in for file managers that are not installed on a CI
       # runner. That exercises the actual install path rather than a mock of it.
-      - name: install.sh installs and uninstalls cleanly
+      - name: install-adapters.sh installs and uninstalls cleanly
         run: |
           set -euo pipefail
           FAKE="$RUNNER_TEMP/fakehome"
@@ -210,7 +210,7 @@ jobs:
           export XDG_DATA_HOME="$FAKE/.local/share"
           export XDG_CONFIG_HOME="$FAKE/.config"
 
-          ./platform/linux/install.sh
+          ./platform/linux/install-adapters.sh
 
           echo "--- installed files ---"
           find "$FAKE" -type f | sort
@@ -228,16 +228,49 @@ jobs:
           test -x "$XDG_DATA_HOME/kio/servicemenus/rcsym-symlink-to.desktop"
 
           echo "--- re-running must be idempotent ---"
-          ./platform/linux/install.sh
+          ./platform/linux/install-adapters.sh
           COUNT=$(grep -c 'rcsym-symlink-to' "$XDG_CONFIG_HOME/Thunar/uca.xml")
           test "$COUNT" -eq 1 || { echo "thunar action duplicated ($COUNT)"; exit 1; }
 
           echo "--- uninstall removes everything ---"
-          ./platform/linux/install.sh --uninstall
+          ./platform/linux/install-adapters.sh --uninstall
           test ! -f "$XDG_DATA_HOME/nautilus-python/extensions/rcsym-nautilus.py"
           test ! -f "$XDG_DATA_HOME/kio/servicemenus/rcsym-symlink-to.desktop"
           test ! -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
           grep -q 'rcsym' "$XDG_CONFIG_HOME/Thunar/uca.xml" && { echo "thunar actions left behind"; exit 1; }
+          echo "clean"
+
+      # The top-level installer, which wraps the adapter script and also places
+      # the binary somewhere permanent.
+      - name: install.sh installs and uninstalls cleanly
+        run: |
+          set -euo pipefail
+          FAKE="$RUNNER_TEMP/fakehome2"
+          STUBS="$RUNNER_TEMP/stubs2"
+          mkdir -p "$FAKE" "$STUBS"
+          for fm in nautilus dolphin nemo thunar; do
+            printf '#!/bin/sh\nexit 0\n' > "$STUBS/$fm"
+            chmod +x "$STUBS/$fm"
+          done
+          export PATH="$STUBS:$PATH"
+          export XDG_DATA_HOME="$FAKE/.local/share"
+          export XDG_CONFIG_HOME="$FAKE/.config"
+
+          ./install.sh --prefix "$FAKE/.local"
+
+          test -x "$FAKE/.local/bin/rcsym" || { echo "binary not installed"; exit 1; }
+          "$FAKE/.local/bin/rcsym" probe >/dev/null
+          test -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action"
+
+          # Adapters must point at the installed binary, not the build output --
+          # otherwise the menus break as soon as target/ is cleaned.
+          grep -q "$FAKE/.local/bin/rcsym" "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action" \
+            || { echo "adapter points outside the install prefix"; exit 1; }
+
+          ./install.sh --prefix "$FAKE/.local" --uninstall
+          test ! -e "$FAKE/.local/bin/rcsym" || { echo "binary survived uninstall"; exit 1; }
+          test ! -f "$XDG_DATA_HOME/nemo/actions/rcsym-symlink-to.nemo_action" \
+            || { echo "adapters survived uninstall"; exit 1; }
           echo "clean"
 
   # ---------------------------------------------------------------------------
@@ -262,7 +295,7 @@ jobs:
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
           # Write-Host is the correct choice for a user-facing installer, and
           # the entry-point script legitimately has no return value to pipe.
-          $results = Invoke-ScriptAnalyzer -Path platform/windows -Recurse -Severity Warning,Error `
+          $results = Invoke-ScriptAnalyzer -Path platform/windows, install.ps1 -Recurse -Severity Warning,Error `
               -ExcludeRule PSAvoidUsingWriteHost,PSUseShouldProcessForStateChangingFunctions
           if ($results) { $results | Format-Table -AutoSize; throw "PSScriptAnalyzer found issues" }
           Write-Output "clean"
@@ -270,23 +303,32 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      # Deliberately read back through the .NET registry API and NOT through the
+      # HKCU: PSDrive. One of these keys is literally named `*`, and the
+      # provider cmdlets treat that as a wildcard -- which globs across every
+      # file association instead of reading one key. It is fast on a near-empty
+      # runner registry and takes minutes on a real profile, so asserting via
+      # PSDrive here would pass while the shipped script hung for users.
       - name: register.ps1 writes correct verbs
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           ./platform/windows/register.ps1
 
-          $base = 'HKCU:\Software\Classes'
           $expect = @{
-            "$base\*\shell\RightClickSymlink.To"                                = '%1'
-            "$base\Directory\shell\RightClickSymlink.To"                        = '%1'
-            "$base\Directory\Background\shell\RightClickSymlink.FromFolder"     = '%V'
-            "$base\Directory\Background\shell\RightClickSymlink.FromFile"       = '%V'
+            'Software\Classes\*\shell\RightClickSymlink.To'                            = '%1'
+            'Software\Classes\Directory\shell\RightClickSymlink.To'                    = '%1'
+            'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFolder' = '%V'
+            'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFile'   = '%V'
           }
 
           foreach ($key in $expect.Keys) {
-            if (-not (Test-Path $key)) { throw "missing verb: $key" }
-            $cmd = (Get-ItemProperty "$key\command").'(default)'
+            $handle = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($key)
+            if (-not $handle) { throw "missing verb: $key" }
+
+            $commandKey = $handle.OpenSubKey('command')
+            if (-not $commandKey) { throw "missing command subkey: $key" }
+            $cmd = $commandKey.GetValue('')
             Write-Output "  $key"
             Write-Output "      $cmd"
 
@@ -302,12 +344,27 @@ jobs:
             if (-not (Test-Path (($cmd -split '"')[1]))) {
               throw "$key points at a missing executable"
             }
-          }
 
-          # Multi-select must collapse to one invocation, not one per file.
-          $msm = (Get-ItemProperty "$base\Directory\shell\RightClickSymlink.To").MultiSelectModel
-          if ($msm -ne 'Player') { throw "MultiSelectModel is '$msm', expected 'Player'" }
+            # Multi-select must collapse to one invocation, not one per file.
+            if ($token -eq '%1' -and $handle.GetValue('MultiSelectModel') -ne 'Player') {
+              throw "$key is missing MultiSelectModel=Player"
+            }
+
+            $commandKey.Dispose(); $handle.Dispose()
+          }
           Write-Output "all verbs correct"
+
+      # Regression guard for the wildcard bug: registration must stay fast even
+      # when Software\Classes is full, which is the normal state of a real
+      # machine. A glob would blow straight past this.
+      - name: registration is not globbing the registry
+        shell: pwsh
+        run: |
+          $elapsed = (Measure-Command { ./platform/windows/register.ps1 }).TotalSeconds
+          Write-Output ("register.ps1 took {0:N1}s" -f $elapsed)
+          if ($elapsed -gt 20) {
+            throw "register.ps1 took ${elapsed}s -- it is almost certainly globbing the * key again"
+          }
 
       - name: unregister.ps1 removes them
         shell: pwsh
@@ -324,6 +381,43 @@ jobs:
             if (Test-Path $key) { throw "left behind: $key" }
           }
           Write-Output "clean"
+
+      # The full installer, end to end, into a throwaway directory.
+      - name: install.ps1 installs and uninstalls cleanly
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'rcsym-install'
+
+          ./install.ps1 -InstallDir $dir -NoPath
+
+          foreach ($f in 'rcsym.exe', 'rcsymw.exe', 'register.ps1', 'install.ps1') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "installer did not place $f" }
+          }
+
+          # Menu entries must point INTO the install directory, not at wherever
+          # the build happened to be. This is the whole reason install.ps1
+          # exists rather than calling register.ps1 directly.
+          $handle = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+            'Software\Classes\Directory\shell\RightClickSymlink.To')
+          if (-not $handle) { throw "verb missing after install" }
+          $cmd = $handle.OpenSubKey('command').GetValue('')
+          if ($cmd -notlike "*$dir*") { throw "verb points outside the install dir: $cmd" }
+          $handle.Dispose()
+
+          $arp = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RightClickSymlink'
+          if (-not (Test-Path $arp)) { throw "no Settings > Apps entry" }
+          Write-Output "installed and registered correctly"
+
+          & (Join-Path $dir 'install.ps1') -InstallDir $dir -Uninstall
+
+          if ([Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+                'Software\Classes\Directory\shell\RightClickSymlink.To')) {
+            throw "verbs survived uninstall"
+          }
+          if (Test-Path $arp) { throw "Settings > Apps entry survived uninstall" }
+          if (Test-Path $dir) { throw "install directory survived uninstall" }
+          Write-Output "uninstalled cleanly"
 
       # A console window flashing on every right-click is a real regression, and
       # it is invisible unless something checks the PE header.

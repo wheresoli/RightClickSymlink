@@ -140,7 +140,7 @@ jobs:
 
             **Linux** — extract, then:
             ```bash
-            ./integration/install.sh --bin ./rcsym
+            ./integration/install-adapters.sh --bin ./rcsym
             ```
 
             ---
