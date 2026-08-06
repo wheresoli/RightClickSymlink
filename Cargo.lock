@@ -993,7 +993,7 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "rcsym"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "rfd",
@@ -1132,7 +1132,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "symlink-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "tempfile",
 ]
