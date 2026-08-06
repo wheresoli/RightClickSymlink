@@ -53,7 +53,7 @@ jobs:
       version: ${{ steps.decide.outputs.version }}
       sha: ${{ steps.decide.outputs.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The commit CI actually validated, not whatever main points at now.
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
@@ -122,7 +122,7 @@ jobs:
     if: needs.decide.outputs.release == 'true' && !inputs.dry_run
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.decide.outputs.sha }}
           fetch-depth: 0
@@ -191,7 +191,7 @@ jobs:
             name: macos-universal
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The tag when there is one; the validated commit on a dry run.
           ref: ${{ inputs.dry_run && needs.decide.outputs.sha || format('v{0}', needs.decide.outputs.version) }}
