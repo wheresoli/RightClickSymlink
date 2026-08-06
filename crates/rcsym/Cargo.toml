@@ -21,4 +21,4 @@ path = "src/bin/rcsymw.rs"
 [dependencies]
 symlink-core = { path = "../symlink-core" }
 clap = { version = "4", features = ["derive"] }
-rfd = "0.15"
+rfd = "0.17"
