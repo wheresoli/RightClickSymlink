@@ -250,26 +250,54 @@ foreach ($b in $Binaries) {
     Copy-Item (Join-Path $source $b) $InstallDir -Force
 }
 
+# Find a file that may live beside the binaries, in the repo, or nowhere.
+#
+# Join-Path throws on an empty path, and $scriptDir IS empty when this script
+# was piped from the web -- so the candidates have to be built conditionally
+# rather than filtered afterwards.
+function Find-Support {
+    param([string]$Name, [string]$RepoRelative)
+
+    $candidates = @(Join-Path $source $Name)
+    if ($scriptDir) {
+        if ($RepoRelative) { $candidates += (Join-Path $scriptDir $RepoRelative) }
+        $candidates += (Join-Path $scriptDir $Name)
+    }
+    $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
 # register.ps1 does the actual menu work and the uninstaller calls it later, so
 # it has to live alongside the binaries rather than only in the repo.
-$registerSource = @(
-    (Join-Path $source 'register.ps1'),
-    (Join-Path $scriptDir 'platform\windows\register.ps1'),
-    (Join-Path $scriptDir 'register.ps1')
-) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-
+$registerSource = Find-Support 'register.ps1' 'platform\windows\register.ps1'
 if (-not $registerSource) {
     Write-Error "register.ps1 not found next to the binaries or in platform\windows."
     return
 }
 Copy-Item $registerSource $InstallDir -Force
 
-# The uninstaller invoked from Settings > Apps is this script.
+# The uninstaller invoked from Settings > Apps is this script. $PSCommandPath
+# is empty when piped from the web, so fall back to the copy in the release
+# archive -- without one of these the Settings > Apps entry would point at a
+# file that does not exist.
+$selfSource = $null
 if ($PSCommandPath -and (Test-Path $PSCommandPath)) {
-    Copy-Item $PSCommandPath (Join-Path $InstallDir 'install.ps1') -Force
+    $selfSource = $PSCommandPath
+}
+else {
+    $selfSource = Find-Support 'install.ps1' $null
 }
 
-Write-Ok "copied $($Binaries.Count + 1) files"
+if ($selfSource) {
+    Copy-Item $selfSource (Join-Path $InstallDir 'install.ps1') -Force
+}
+else {
+    # Last resort: reconstruct it from the running script's own text so that
+    # uninstalling still works.
+    $MyInvocation.MyCommand.ScriptBlock.ToString() |
+        Set-Content (Join-Path $InstallDir 'install.ps1') -Encoding UTF8
+}
+
+Write-Ok "copied $($Binaries.Count + 2) files"
 
 # ---------------------------------------------------------------------------
 
