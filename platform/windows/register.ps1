@@ -51,10 +51,10 @@ $ErrorActionPreference = 'Stop'
 # The first one contains a literal asterisk -- that is the shell's key for
 # "any file", not a wildcard.
 $Verbs = @(
-    @{ Key = 'Software\Classes\*\shell\RightClickSymlink.To';                           Label = 'Symlink To...' }
-    @{ Key = 'Software\Classes\Directory\shell\RightClickSymlink.To';                   Label = 'Symlink To...' }
-    @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFolder'; Label = 'Symlink From Folder...' }
-    @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFile';   Label = 'Symlink From File...' }
+    @{ Key = 'Software\Classes\*\shell\RightClickSymlink.To';                           Label = 'Symlink To...';         Icon = 'SL_File_To.ico' }
+    @{ Key = 'Software\Classes\Directory\shell\RightClickSymlink.To';                   Label = 'Symlink To...';         Icon = 'SL_Folder_To.ico' }
+    @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFolder'; Label = 'Symlink From Folder...'; Icon = 'SL_Folder_From.ico' }
+    @{ Key = 'Software\Classes\Directory\Background\shell\RightClickSymlink.FromFile';   Label = 'Symlink From File...';   Icon = 'SL_File_From.ico' }
 )
 
 # ---------------------------------------------------------------------------
@@ -125,6 +125,16 @@ Or pass an explicit path:
 
 $ExePath = (Resolve-Path $ExePath).Path
 
+# Where the .ico files live. Beside the executable when installed, or in the
+# repo's assets directory when running straight out of a checkout.
+$exeDir = Split-Path -Parent $ExePath
+$IconDir = @(
+    (Join-Path $exeDir 'icons'),
+    (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'assets\icons\win')
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $IconDir) { $IconDir = $exeDir }
+
 # Flags baked into every registered command. The context menu has no way to
 # carry per-invocation preferences, so defaults are fixed at install time.
 $flags = "--kind $Kind"
@@ -141,7 +151,21 @@ foreach ($v in $Verbs) {
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($v.Key)
     try {
         $key.SetValue('MUIVerb', $v.Label)
-        $key.SetValue('Icon', $ExePath)
+
+        # Explorer will not read a PNG here -- Icon must be an .ico, or an
+        # "exe,index" reference into a PE resource. The .ico files in
+        # assets\icons\win carry every size from 16 up, so the shell picks the
+        # right one instead of downscaling a single large image.
+        #
+        # $IconDir is resolved below; falls back to the executable's own icon if
+        # the assets are not alongside the install.
+        $iconFile = Join-Path $IconDir $v.Icon
+        if (Test-Path $iconFile) {
+            $key.SetValue('Icon', $iconFile)
+        }
+        else {
+            $key.SetValue('Icon', $ExePath)
+        }
 
         if ($v.Key -like '*Background*') {
             # %V, NOT %1. For a Background verb %1 is empty -- the verb fires

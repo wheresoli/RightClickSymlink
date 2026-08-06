@@ -275,6 +275,26 @@ if (-not $registerSource) {
 }
 Copy-Item $registerSource $InstallDir -Force
 
+# The menu icons. register.ps1 looks for an "icons" directory beside the
+# executable, so they have to travel with the install -- a registry Icon value
+# is an absolute path, and pointing it into an unzipped Downloads folder breaks
+# the moment that folder is cleaned up.
+$iconSource = @(
+    (Join-Path $source 'icons'),
+    (Join-Path $source 'assets\icons\win')
+) + $(if ($scriptDir) { (Join-Path $scriptDir 'assets\icons\win') } else { @() }) |
+    Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+if ($iconSource) {
+    $iconDest = Join-Path $InstallDir 'icons'
+    New-Item -ItemType Directory -Force -Path $iconDest | Out-Null
+    Copy-Item (Join-Path $iconSource '*.ico') $iconDest -Force
+    Write-Ok "copied $((Get-ChildItem $iconDest -Filter *.ico).Count) menu icons"
+}
+else {
+    Write-Info "no icons found; menu entries will use the executable's icon"
+}
+
 # The uninstaller invoked from Settings > Apps is this script. $PSCommandPath
 # is empty when piped from the web, so fall back to the copy in the release
 # archive -- without one of these the Settings > Apps entry would point at a

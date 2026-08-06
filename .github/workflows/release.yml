@@ -234,6 +234,8 @@ jobs:
           cp target/release/rcsym "$out/"
           cp install.sh "$out/"
           cp -r platform/linux "$out/integration"
+          mkdir -p "$out/integration/icons"
+          cp -r assets/icons/png "$out/integration/icons/png"
           cp platform/linux/README.md "$out/INSTALL.md"
           cp LICENSE "$out/"
           chmod +x "$out/install.sh" "$out/integration/install-adapters.sh"

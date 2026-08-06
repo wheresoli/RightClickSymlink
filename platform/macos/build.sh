@@ -57,6 +57,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APPEX/Contents/MacOS"
 cp "$HERE/RightClickSymlink/Info.plist" "$APP/Contents/Info.plist"
 cp "$HERE/FinderSyncExt/Info.plist"     "$APPEX/Contents/Info.plist"
 
+# Menu icons go in the EXTENSION's Resources, not the host app's -- the
+# extension is what builds the menu, and Bundle.main inside it is the appex.
+# 32px so a Retina display has full resolution for a 16pt menu item.
+mkdir -p "$APPEX/Contents/Resources"
+if [ -d "$ROOT/assets/icons/png/32" ]; then
+    cp "$ROOT/assets/icons/png/32"/*.png "$APPEX/Contents/Resources/"
+    say "Bundled $(ls -1 "$APPEX/Contents/Resources"/*.png | wc -l | tr -d ' ') menu icons"
+else
+    say "No icons found at assets/icons/png/32 -- menu items will have no image"
+fi
+
 lipo -create -output "$APP/Contents/Resources/rcsym" "${RUST_BINS[@]}"
 chmod +x "$APP/Contents/Resources/rcsym"
 

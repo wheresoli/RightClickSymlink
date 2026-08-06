@@ -2,7 +2,7 @@
 Name=Symlink To…
 Comment=Create a symlink to this somewhere else
 Exec=@RCSYM@ to %F @FLAGS@
-Icon-Name=emblem-symbolic-link
+Icon-Name=rcsym-folder-to
 # notnone: only when something is actually selected.
 Selection=notnone
 Extensions=any;
