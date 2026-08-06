@@ -63,6 +63,7 @@ jobs:
         id: decide
         env:
           OVERRIDE: ${{ inputs.version }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           set -euo pipefail
           SHA="$(git rev-parse HEAD)"
@@ -73,22 +74,65 @@ jobs:
           # change, this very feature -- silently triggers it.
           MSG="$(git log -1 --pretty=%s)"
           LATEST="$(git tag -l 'v*' --sort=-v:refname | head -1)"
+          CHANGED=""
           echo "subject: $MSG"
 
-          skip() { echo "release=false" >> "$GITHUB_OUTPUT"; echo "SKIP: $1"; exit 0; }
+          stop() {
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "NO RELEASE: $1"
+            {
+              echo "### No release"
+              echo
+              echo "$1"
+              if [ -n "$CHANGED" ]; then
+                echo
+                echo "Unreleased since \`$LATEST\`:"
+                echo '```'
+                printf '%s\n' "$CHANGED"
+                echo '```'
+                echo
+                echo "To ship these, run the **Release** workflow from the Actions"
+                echo "tab, or put \`[release]\` in a commit subject."
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
 
-          case "$MSG" in
-            *"[skip release]"*) skip "commit asked to skip" ;;
-          esac
+          # A manual run is deliberate by definition -- none of the filtering
+          # below applies to it. That is the escape hatch for everything the
+          # automatic path holds back.
+          if [ "$MANUAL" != "true" ]; then
+            case "$MSG" in
+              *"[skip release]"*) stop "the commit asked to skip" ;;
+            esac
 
-          if [ -n "$LATEST" ]; then
-            # Docs and workflow edits do not need new binaries. Only applies
-            # once something has been released; the first one always goes.
-            CHANGED="$(git diff --name-only "${LATEST}..HEAD" || true)"
-            if [ -z "$CHANGED" ]; then skip "nothing changed since $LATEST"; fi
-            if ! printf '%s\n' "$CHANGED" \
-                 | grep -qvE '(\.md$|^\.github/|^LICENSE$|^\.gitignore$|^\.gitattributes$)'; then
-              skip "only docs/CI changed since $LATEST"
+            FORCE=0
+            case "$MSG" in
+              # Note this cannot collide with "[skip release]", which contains
+              # no literal "[release]" substring.
+              *"[release]"*) FORCE=1 ;;
+            esac
+
+            if [ "$FORCE" -eq 0 ] && [ -n "$LATEST" ]; then
+              CHANGED="$(git diff --name-only "${LATEST}..HEAD" || true)"
+              if [ -z "$CHANGED" ]; then stop "nothing changed since $LATEST"; fi
+
+              # Paths that do not, on their own, justify shipping a new version
+              # to users:
+              #
+              #   docs / CI / LICENSE   cannot change the binary at all
+              #   Cargo.toml, Cargo.lock  a dependency bump on its own
+              #
+              # The second is the interesting one. Dependency updates merge
+              # themselves, but publishing is a separate decision -- otherwise
+              # every routine bump ships to everyone who installed via
+              # `curl | bash`, with no human in the loop at any point. They
+              # accumulate here and go out with the next real change or a
+              # manual run.
+              if ! printf '%s\n' "$CHANGED" \
+                   | grep -qvE '(\.md$|^\.github/|^LICENSE$|^\.gitignore$|^\.gitattributes$|^Cargo\.toml$|^Cargo\.lock$)'; then
+                stop "only dependencies, docs or CI changed since $LATEST"
+              fi
             fi
           fi
 

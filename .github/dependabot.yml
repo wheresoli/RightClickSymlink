@@ -5,12 +5,30 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+
+    # Wait before adopting a newly published version.
+    #
+    # This is the counterweight to auto-merge. Without it, a compromised
+    # upstream release would be merged and shipped to users with no human ever
+    # seeing it -- and this repo publishes releases automatically, so the blast
+    # radius runs all the way to `curl | bash`. A week is long enough that a
+    # malicious or badly broken release is usually yanked before it is adopted.
+    #
+    # Security updates deliberately ignore this: GitHub exempts them from
+    # cooldown, so a fix for a known CVE still arrives immediately.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+
     groups:
       # One PR for routine bumps rather than five. Anything major still comes
       # through on its own so it gets read properly.
       minor-and-patch:
         update-types: [minor, patch]
 
+  # No cooldown here: GitHub does not support the option for the
+  # github-actions ecosystem, and setting it anyway makes the whole file
+  # invalid, which takes Dependabot down silently.
   - package-ecosystem: github-actions
     directory: /
     schedule:

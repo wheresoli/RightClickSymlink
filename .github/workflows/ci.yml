@@ -148,7 +148,19 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Shellcheck
-        run: shellcheck -S warning install.sh scripts/smoke.sh platform/linux/install-adapters.sh platform/macos/build.sh
+        run: |
+          shellcheck -S warning install.sh scripts/smoke.sh \
+            scripts/test-release-decision.sh \
+            platform/linux/install-adapters.sh platform/macos/build.sh
+
+      # The release workflow's publish/hold decision, exercised against every
+      # branch of its rules. It gates whether binaries reach users, and a
+      # mistake there is either a silent failure to ship or an unintended
+      # publish -- neither of which any other test would notice.
+      - name: Release decision logic
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check pyyaml
+          ./scripts/test-release-decision.sh
 
       - name: Nautilus extension parses
         run: python3 -m py_compile platform/linux/nautilus/rcsym-nautilus.py

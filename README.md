@@ -249,19 +249,47 @@ Actions tab with a `version` input. It also takes a `dry_run` flag that builds
 all three platforms and uploads the artifacts without tagging or publishing —
 useful for checking a packaging change before it becomes a real release.
 
-### Dependency updates merge themselves too
+### Dependency updates merge themselves, but do not ship themselves
 
 Dependabot opens the PR, CI runs on it, and if all seven jobs pass it is
 squash-merged automatically. Nothing to click.
 
-Batching keeps that from becoming a release per bump. GitHub Actions updates
-are grouped into one PR; Cargo minor and patch updates into another. Major
-Cargo bumps still arrive on their own, because a `0.15 → 0.17` is worth seeing
-by itself.
+**Merging is automatic; publishing is not.** A commit that changes only
+`Cargo.toml` and `Cargo.lock` lands on `main` without cutting a release. Updates
+accumulate there and go out with the next real change, or when you ask for one:
 
-Action-only updates do not cut a release at all — the release job skips commits
-that touch nothing outside `.github/`, and a workflow bump cannot change the
-binary.
+```bash
+gh workflow run release.yml
+```
+
+A `[release]` in a commit subject forces one too.
+
+That split is deliberate. Merging a dependency update on green CI is low risk.
+*Shipping* it means every routine bump reaches everyone who installed via
+`curl | bash`, with no human involved at any point in the chain. Those are
+different decisions and this treats them as such.
+
+Two further brakes:
+
+- **Cooldown.** New versions are not offered for 7 days (14 for majors), so a
+  compromised or badly broken release usually gets yanked before it is adopted.
+  GitHub exempts *security* updates from cooldown, so a fix for a known CVE
+  still arrives immediately.
+- **Batching.** Actions updates group into one PR, Cargo minor/patch into
+  another. Major Cargo bumps still arrive alone, because a `0.15 → 0.17` is
+  worth seeing by itself.
+
+Action-only updates cannot change the binary, so they never release either way.
+
+The publish/hold rules have their own test, since a mistake there is either a
+silent failure to ship or an unintended publish:
+
+```bash
+./scripts/test-release-decision.sh
+```
+
+It extracts the decision step straight out of `release.yml` and runs it against
+stubbed inputs, so it tests the shipped logic rather than a copy that can drift.
 
 **The auto-merge deliberately does not use GitHub's built-in one.** Native
 auto-merge only waits for checks a branch protection rule marks *required*, and
