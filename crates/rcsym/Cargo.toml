@@ -29,4 +29,4 @@ clap = { version = "4", features = ["derive"] }
 #
 # xdg-portal still handles the dialogs themselves, on X11 and Wayland alike;
 # the portal is a D-Bus service and does not care which compositor is running.
-rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal"] }
